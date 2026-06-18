@@ -1,0 +1,56 @@
+{
+  "machine_id": "M210",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M210/mode_1 bucket 67f06738/f8acdc8b 2026-06-18",
+      "note": "Field-signature MATCHES the validated ST1 paid_spin/Normal (StopSymbolsByCol+PayoutByPayline+PayoutIdToWinAmount+CostCredits=1000>0). Native payids (9878/80000 winning rounds). sum(WinCredits)=57,815,000 == server FeatureWin['Normal'] exact. The PAID base spin (rtp_integrity.paid_st)."
+    },
+    "111": {
+      "role": "state",
+      "play": "Selector",
+      "economy": {"win_field": "WinCredits", "kind": "preview"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "ReMarks", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0},
+      "observed_fields_source": "st_inventory M210/mode_1 bucket 67f06738/f8acdc8b 2026-06-18",
+      "note": "Bare marker round — NO reel fields, NO offer fields, NO cost, win 0 on 181/181. ReMarks='Selector' on 100%. Role=state (a KNOWN_ROLE empty/marker round). It is the selector that opens the ListRewardWheel settlement (ST1 -> ST111 -> ST139 sequence). The machine's own taxonomy splits it across two FeatureWin keys (SimpleSelector + SelectorPreFreespin, each 181x, win 0) but it is a single SpinType=111; play 'Selector' = the literal 100%-present ReMarks. NO win (economy preview): nothing to double-count."
+    },
+    "139": {
+      "role": "settlement",
+      "play": "ListRewardWheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "RewardLastNode", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M210/mode_1 bucket 67f06738/f8acdc8b 2026-06-18",
+      "note": "Reward-list settlement (FeatureWin key 'ListRewardWheel'). CostCredits=0 (free, granted by the ST111 selector). The reel-field KEYS are present but ALL EMPTY (StopSymbolsByCol=[], PayoutByPayline=None, PayoutIdToWinAmount={} on 100%) — there is NO payline/reel win and NO native payid: the real win is purely WinCredits (13,310,000 / 181 == server FeatureWin['ListRewardWheel'] exact). A BARE no-payid settlement (economy=real) in the M43/M279/M283 wheel/minigame precedent. ReMarks carries the per-round 'Minigame CellIndexes: <11-13 comma-separated cell ids>,curTimes:0,totalTimes:0' (a reward-list/wheel lottery) + RewardLastNode the per-cell prize-code ladder (codes 4501/4502/4503 + numeric tiers); the labeled cell-map / per-cell prize un-merge is parser_blind (per-ST extraction layer, framework-team). No collect-coin channel: no SymbolIndexToRewards/CollectCount/CreditsSymbols on ANY ST, and the win is not additive alongside a payline pid (T2, NOT a live-collect T3). NO native payid -> requires a config-only SynthesizePayIdRule (synthesize_pay_id, label_format=spin_type) to mint pid 'st139' and zero _unattributed_st139 (coordinator writes the json — needs_synth)."
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "Selector|Minigame", "opens": "Selector|ListRewardWheel", "note": "No round-level trigger pid. The reward-list feature fires server-side: a base spin (ST1) -> a Selector marker (ST111, win 0) -> the ListRewardWheel settlement (ST139, the only win). The exact trigger probability is rawdata-unobservable; the feature opened ~181/80000 paid spins in-sample."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M210/mode_1"},
+    "evidence": "Provenance clean (_cache_version:3 on 2/2 chunks, single config bucket 67f06738/f8acdc8b, _bet=1000, NOT virtual). 80,362 rounds over 16 robots. ST roles derived from THIS machine's OWN fields: ST1 paid_spin/Normal (CostCredits=1000>0, full reel + native payids; signature MATCHES validated ST1); ST111 state/Selector (bare marker, win 0, ReMarks='Selector' 181/181); ST139 settlement/ListRewardWheel (CostCredits=0, reel-field keys present-but-empty, real win purely WinCredits, NO native payid). Per-ST WinCredits == server FeatureWin EXACT (Normal 57,815,000/80000; Selector 0/181; ListRewardWheel 13,310,000/181). No collect-coin channel (no SymbolIndexToRewards/CollectCount/CreditsSymbols on any ST; win not additive alongside a payline pid) -> T2, NOT a live-collect T3. ST139 no-payid settlement attributed via a config-only SynthesizePayIdRule (m210_listrewardwheel_settlement, synthesize_pay_id, spin_types=[139], label_format=spin_type) — EXACT M43/M279/M283 precedent; coordinator writes the rule (status=needs_synth). base_hash 3ddaa183f38c unchanged (manifest-only T2 onboard, no new plugins, no closure change). validation.status=auto pending user domain sign-off (gate 8).",
+    "caveats": [
+      "ST139 reward-list per-cell prize map (the 'Minigame CellIndexes' 11-13 cell-id list + RewardLastNode per-cell prize-code ladder, codes 4501/4502/4503 + numeric tiers) is parser_blind: the shared monolith parser keeps only sample ReMarks/ST, not the per-round CellIndex/RewardLastNode accumulation. The settled win's multiplier banding IS base-derivable via the generic spin_type_rtp_buckets / spin_type_outcomes plugins; the labeled cell-map breakout needs the per-ST extraction layer (DIRECTION.md §3, framework-team) — same boundary as the M279 wheel CellIndex map.",
+      "ST111 (state/Selector) covers TWO server FeatureWin keys (SimpleSelector + SelectorPreFreespin) on a single SpinType=111; the win-0 marker carries no economy, so the SimpleSelector-vs-SelectorPreFreespin distinction is descriptive only (no win to attribute).",
+      "ST139 trigger gate (which base outcomes open the reward-list) and the exact trigger probability are not in rawdata (server-side feature grant) — observed grant ~181/80000 paid spins."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST139 round but =0 on 100% of the in-sample records. FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): it IS a real progressive jackpot store, but the CURRENT testspin interface forces its accumulation to 0 (so the sample correctly shows 0). Parse as-is with the progressive contributing 0; the field is already in the ST1/ST139 signature, so parsing is FORWARD-COMPATIBLE — when the interface is optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE (excludes the progressive); it grows when the field is enabled. Record once per machine, no per-machine re-confirmation (fleet-wide).", "rtp_impact": true, "rtp_impact_current": 0, "source": "fleet_default", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

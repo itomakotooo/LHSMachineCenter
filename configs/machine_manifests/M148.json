@@ -1,0 +1,58 @@
+{
+  "machine_id": "M148",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M148/mode_1 bucket c0f90517/7c4e3f50 2026-06-18 (40000 rounds; CostCredits=1000>0 real, ReMarks empty, ReelSkin=1, GameplayTriggerType=0, paylines pid 1-7 native, residual 0)"
+    },
+    "147": {
+      "role": "respin",
+      "play": "RandomLockRespinUntilLose",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M148/mode_1 bucket c0f90517/7c4e3f50 2026-06-18 (3373 rounds; ReMarks='respin', ReelSkin=2, full reel signature StopSymbolsByCol+PayoutByPayline+PayoutIdToWinAmount; FREE economy: CostCredits=1000 is a per-record ECHO of the group bet, 0/3373 records ever debited credits -> paid once per SpinTimes group via ST1)"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "respin",
+    "opens": "RandomLockRespinUntilLose",
+    "note": "No round-level trigger payid (ST1 carries only ordinary payline pids 1-7, no 666-style anchor). The RandomLockRespinUntilLose feature fires server-side (random wild/symbol lock per the roster postprocessor name); the granted respin records carry ReMarks='respin' and share the triggering paid spin's SpinTimes group + bet (ReelSkin=2). The respin is a FREE cost=0-equivalent reel spin (CostCredits is a per-record echo; 0/3373 ever debited) and chains as a win-gated continuation 'until lose': 1660 ST1->ST147 grants + 1713 ST147->ST147 self-continuations, run-lengths 1-12 (decaying). ST147 carries its OWN native payids (every win has a matching PayoutIdToWinAmount, residual 0) -> no payid synthesis needed. Same `respin` archetype as M62/M190/M196 ST72 (UntilLoseRespin) by FIELD SIGNATURE; ST number 147 vs 72 is irrelevant (reuse is by signature, not by number)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M148/mode_1"},
+    "evidence": "Provenance clean (_cache_version:3 real; chunk_0002 bucket c0f90517/7c4e3f50, 43373 rounds across 8 robots). Two STs derived FRESH from M148's own fields, then matched to the reuse registry by FIELD SIGNATURE (not ST number). ST1 = paid base spin (CostCredits=1000>0, ReMarks empty, ReelSkin=1, GameplayTriggerType=0, full reel signature, payline payids 1-7 native, residual 0) -> paid_spin/Normal (signature matches the validated paid_spin base ST1/ST35). ST147 = FREE reel spin extending the paid SpinTimes group (ReMarks='respin', ReelSkin=2, full reel signature StopSymbolsByCol+PayoutByPayline+PayoutIdToWinAmount; CostCredits=1000 is a per-record echo, 0/3373 records debited -> paid-once-per-group like M104) -> role respin (the M43 ST50 / M279 ST36 / M62 ST72 archetype), play=RandomLockRespinUntilLose (the literal analysisResult FeatureWin key; ST1's FeatureWin key = Normal). Sequence proves the model: ST147 predecessors = ST1(1660 grants) + ST147(1713 self-continuations); win-gated 'until lose' continuation, run-lengths 1-12. respin_dynamics (role-keyed via ROLE_ANALYSES[respin], manifest-resolved, no hardcoded ids) + the generic PER_SPINTYPE plugins (spin_type_outcomes / payouts_by_spin_type / reel_marginal_by_spin_type / spin_type_rtp_buckets) strict-reuse VERBATIM -> manifest-only onboard: no new plugin, no machine_spec change, no frontend change (respin role + respin_dynamics already wired and rendered for M62/M43/M279/M149). NO novel mechanic: scanned every round for SymbolIndexToRewards / CollectCount / collection-map / additive no-payid residual -> none populated; all 8947 winning rounds (ST1+ST147) carry a matching native payid summing exactly to WinCredits (residual 0, no SynthesizePayIdRule). base_hash 3ddaa183f38c unchanged (all 5 artifacts base-excluded; only the manifest was written). USER SIGN-OFF PENDING (gate 8).",
+    "caveats": [
+      "ST147 (RandomLockRespinUntilLose) is a NEW play name not previously onboarded, but maps to the EXISTING validated `respin` role; the generic per-ST plugins + respin_dynamics auto-adapt by role (resolved from the manifest, not by ST number) -> no new code. [W2]",
+      "Respin trigger gate (which winning ST1 configs open the RandomLockRespinUntilLose chain) is server-side (random lock) and not encoded as a round-level field; grant-rate is observed (1660/40000 ST1 -> ST147), the exact lock rule + the 'until lose' stopping probability are rawdata-unobservable (observed run-length distribution only). [W3]",
+      "CurJackpotStoreWin present 100% but test-interface-zeroed (0 on all 43373 rounds) -> fleet-wide test-interface behavior (user-confirmed 2026-06-12); parse-as-is, kept in both ST signatures so parsing is FORWARD-COMPATIBLE; the data RTP is the BASE (excludes the progressive). [out_of_engine_mechanics]",
+      "ANALYZER DATA BOUNDARY: respin burst-length / continuation-chain run-length histograms + per-line PayoutByPayline ladder require per-round ReMarks/line accumulation that lives only in the parser (a base-closure file). respin_dynamics computes every metric the frozen accumulators expose and marks the parser-blind sub-metrics in its `parser_blind` field; those are framework-team work. [03]",
+      "Only mode 1 cached for M148; other modes (if any) share STRUCTURE (value-agnostic parser) and would reuse this manifest unchanged."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST147 round but =0 on 100% of the in-sample records (43373/43373). FLEET-WIDE (user-confirmed 2026-06-12): the CURRENT testspin interface forces the progressive jackpot store accumulation to 0, so the sample correctly shows 0. Parse the data as-is with the progressive contributing 0; the field is already in both ST signatures, so parsing is FORWARD-COMPATIBLE -- when the test interface is later optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE RTP (excludes the progressive); the progressive ADDS on top once the interface enables it.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

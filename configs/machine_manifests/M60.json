@@ -1,0 +1,236 @@
+{
+  "machine_id": "M60",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M60/mode_1 bucket 75b80c67/b8176503 2026-06-18 (chunk_0002.json, 40000 rounds, _cache_version 3 REAL; CostCredits=BetAmount=1000 on 100%, GTT=0, native PayoutIdToWinAmount; trigger pid 7773 pays 0 on all 272 episode openers, opens Wheel->MultiplierFreespin)"
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "StopSymbolsByCol",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M60/mode_1 bucket 75b80c67/b8176503 2026-06-18 (272 rounds, bare WinCredits settlement, ReMarks='WheelSpin CellIndex N', NO reel/payout fields, WinCredits=0 on 100% in this sample). FIELD-SIGNATURE MATCH to validated M279/M283 ST2 settlement/Wheel.",
+      "wheel_cells": {
+        "spin_type": 2,
+        "remarks_field": "ReMarks",
+        "cell_pattern": "CellIndex\\s+(\\d+)",
+        "cell_count": 12,
+        "prize_basis": "win_over_bet"
+      }
+    },
+    "106": {
+      "role": "freespin",
+      "play": "MultiplierFreespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M60/mode_1 bucket 75b80c67/b8176503 2026-06-18 (2695 rounds, CostCredits=0 FREE granted freespin, ReMarks='FreeSpin N' progression counter 1..N, ReelSkin=2 free skin, free-suffixed StopSymbols e.g. 'cleodoublefree'/'bastetfree', native PayoutIdToWinAmount; server FeatureWin key='MultiplierFreespin' win 15,871,500 == sum(ST106 WinCredits) EXACT). NOT a pre-validated ST: role derived from THIS machine's OWN fields (reel fields + cost 0 + freespin markers + granted) per the per-ST decision framework.",
+      "trigger_paths": {
+        "discriminator": {
+          "kind": "round_field",
+          "field": "GameplayTriggerType",
+          "map": {
+            "0": "scatter"
+          },
+          "unmapped_value_policy": "surface_as_unknown_path"
+        },
+        "paths": {
+          "scatter": {
+            "opened_by": {
+              "payout_id": "7773"
+            },
+            "label": "scatter (bonus trigger -> Wheel -> MultiplierFreespin)"
+          }
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": "7773",
+    "remarks": "WheelSpin|FreeSpin",
+    "opens": "Wheel|MultiplierFreespin",
+    "note": "Episode flow observed in mode 1: ST1 (paid reel) carries trigger pid 7773 (pays 0 on all 272 occurrences, a bonus marker) -> ST2 (Wheel settlement, ReMarks='WheelSpin CellIndex N', WinCredits=0 on 100% in this sample) -> ST106 (MultiplierFreespin, ReMarks='FreeSpin 1..N', free cost=0). 272 episode openers (pid 7773) == 272 ST2 wheel rounds == 272 'FreeSpin 1' episode starts (EXACT). GameplayTriggerType uniformly 0 on all STs (single scatter trigger context). NO CollectCount/SymbolIndexToRewards field on this machine -> NOT a live collect channel; the M275-style 'collect_peak' second path is structurally absent. T2: STs use STANDARD fields, no novel mechanic field."
+  },
+  "validation": {
+    "status": "auto",
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M60/mode_1"
+    },
+    "evidence": "W1 deep-parse on the single real chunk chunk_0002.json (_cache_version 3 REAL, _bet 1000, single md5 bucket 75b80c67b973.../b8176503a196..., 8 robots, 42967 rounds, SpinType tally {1:40000, 2:272, 106:2695}). PROVENANCE clean (no _cache_version:2 virtual). ST roles derived from real fields: st1 paid_spin/Normal (CostCredits=BetAmount=1000 100%, native payid, FIELD-SIGNATURE MATCH to validated ST1/ST35 paid_spin/Normal); st2 settlement/Wheel (bare WinCredits, NO reel/payout fields, ReMarks='WheelSpin CellIndex N', FIELD-SIGNATURE MATCH to validated M279/M283 ST2 settlement/Wheel -> NO native payid; win=0 on 100% in this sample so no _unattributed bucket arises here); st106 freespin/MultiplierFreespin (NOT pre-validated -> classified from THIS machine's OWN fields: reel fields + CostCredits=0 + ReMarks='FreeSpin N' granted markers + free skin; server FeatureWin key 'MultiplierFreespin' win 15,871,500 == ST106 WinCredits sum EXACT). ECONOMY: WinCredits==sum(PayoutIdToWinAmount) on ALL 42695 ST1+ST106 rounds (no additive no-payid residual -> NO live-collect channel, NO _unattributed_residual). ST1->Normal 17,964,750 == ST1 WinCredits sum EXACT; ST2->Wheel 0.0. derive_analyses pulls paid_spin + settlement + freespin role analyses + the Wheel play-keyed wheel_dynamics + the freespin-role freespin_dynamics -- all STRICT-REUSE existing plugins, NO NEW plugin, NO machine_spec wiring change, NO frontend dimension change (freespin role + Wheel play already wired). base_hash unchanged 3ddaa183f38c (manifest base-excluded).",
+    "caveats": [
+      "Single ~43k-round chunk (chunk_0002.json): high-multiplier tail, rare retrigger arc, and the MultiplierFreespin multiplier-ladder felt-dimension are DIRECTIONAL, not precise. NOT re-fetched (cache-only rule).",
+      "ST2 Wheel WinCredits=0 on 100% of 272 rounds in THIS sample -> the wheel currently lands on zero-prize cells only / pays nothing here, so NO _unattributed_st2 arises and NO SynthesizePayIdRule is needed for this bucket (round_win_rule null). The validated M279/M283 Wheel precedent DOES carry a synth rule because their wheel pays >0; if a later M60 sample populates a nonzero wheel prize with no payid, the EXACT M279/M283 m279_wheel_settlement synth rule (synthesize_pay_id, spin_types=[2], label_format=spin_type) applies config-only. Wheel CellIndex 12-cell landing map + jackpot-cell probability are parser_blind (per-ST CellIndex accumulator, framework-team) -- same boundary as M279.",
+      "ST106 MultiplierFreespin per-round multiplier ladder (the FeatureWin 'MultiplierFreespin' multiplier taxonomy + per-spin ExtraRatio-equivalent) is captured at the coarse per-ST RETURN_BUCKET / freespin_dynamics level; an explicit per-multiplier labeled breakout is parser_blind (needs the per-ST freespin-progression extractor), NOT fabricated into the manifest.",
+      "CurJackpotStoreWin present on every ST1/ST106 round but =0 on 100% of in-sample records -> the fleet-wide test-interface jackpot-store zeroing (declaration-confirmed fleet pattern, MEMORY 2026-06-12 / M279/M283/M275 sign-off). Parse-as-is at 0; forward-compatible (field already in the st1/st106 observed_fields). RTP excludes the progressive.",
+      "GameplayTriggerType present and =0 on all st1/st106 rounds (single trigger context in this cache). trigger_paths declares the single 'scatter' path and surfaces any future non-zero GTT value as an unknown path (signal, not residual). Parse-as-is; forward-compatible (in the signatures).",
+      "SESSION-DIM CONSERVATION (framework-layer, NOT a manifest defect): smoke report shows session_conservation diff 41.59% (session_win_sum 19,763,250 vs total_win 33,836,250) -- the freespin episode wins land at ROUND level (ST106 carries its own PayoutIdToWinAmount on every winning round, so _round_has_credited_win correctly EXCLUDES them from the trigger session to avoid double-count), and the trigger ST1 round carries ReMarks='Trigger' which trigger_sessions.py classifies as Type-1 'last_non_none' (TopDollar-selector semantics) rather than Type-2 'sum_all' (freespin-sum semantics). This is the KNOWN fleet-wide Type-2 session-dim caveat (MEMORY b8826c5: 'Type-2 付费回合口径丢 ~45.8% 赢额 + conservation 告警'). It does NOT affect the acceptance gate: rtp_integrity_check.passed=TRUE (L1 sum(payid)==our_total, L2 NO fallback bucket, L3 anchors), our_total_win 33,836,250 == server FeatureWin Normal+MultiplierFreespin EXACT, no double-count. The fix lives in trigger_sessions.py/parser.py (CLOSURE files -- framework-team), NOT in the 5 onboarding artifacts. Contrast M165 (freespin trigger ReMarks='' -> Type-2 sum_all -> conservation OK) vs M279 (wheel/respin share SpinTimes -> folded -> conservation OK). Flagged for the framework team; NOT an onboarding blocker (no _unattributed bucket, no live-collect channel).",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST106 round but =0 on 100% of in-sample records. Established fleet-wide test-interface zeroing, declaration-confirmed (MEMORY: gate-8 ruling + M279/M283/M275 sign-off -- a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in the ST signatures so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). The data RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation -- fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

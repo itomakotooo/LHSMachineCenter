@@ -1,0 +1,56 @@
+{
+  "machine_id": "M209",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_field_presence": {"AccCredits": 1.0, "BetAmount": 1.0, "CollectCount": 1.0, "CostCredits": 1.0, "CreditsSymbols": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "SymbolIndexToRewards": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M209/mode_1 bucket 0ee5e387/559db418 2026-06-18",
+      "notes": "PAID base reel spin. Field-signature-matches M279 ST140 (NormalCollectionSpin): same core reel fields + CollectCount/AccCredits/CreditsSymbols collect metronome (CollectCount ticks 1..N and resets, 9969 resets observed; AccCredits accumulates). SymbolIndexToRewards='{}' (empty) on 100% of 80000 records — NO live collect-coin channel; win is FULLY payid-attributed (9306/9306 win-rounds carry a matching PayoutIdToWinAmount; ZERO win-but-no-payid rounds => no _unattributed_residual). The generic per-ST plugins (spin_type_outcomes/payouts_by_spin_type/reel_marginal/rtp_buckets) + collect_mechanic auto-adapt. GameplayTriggerType presence 1.0 here vs 0.1667 on M279 is an OPTIONAL feature field (variable cross-machine), not a shape field — core signature matches."
+    },
+    "36": {
+      "role": "respin",
+      "play": "MoveSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M209/mode_1 bucket 0ee5e387/559db418 2026-06-18",
+      "notes": "FREE (CostCredits=0) win-driven server-side wild-nudge re-spin, ReMarks='move'. Field-signature-matches M279 ST36 (MoveSpin) => STRICT-REUSE the respin role + respin_dynamics (ROLE_ANALYSES['respin'], already wired). Win is FULLY payid-attributed (1452/1452 win-rounds carry a matching PayoutIdToWinAmount; ZERO win-but-no-payid) => NO SynthesizePayIdRule needed. Preceded in-sequence by ST149 (CommonSelector marker)."
+    },
+    "149": {
+      "role": "state",
+      "play": "CommonSelector",
+      "economy": {"win_field": null, "kind": "marker"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "ReMarks", "IsLackCreditsSpin"],
+      "observed_fields": ["IsLackCreditsSpin", "RTPId", "ReMarks", "SpinTimes", "SpinType"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0},
+      "observed_fields_source": "st_inventory M209/mode_1 bucket 0ee5e387/559db418 2026-06-18",
+      "notes": "NOT in the validated-ST list — classified from THIS machine's OWN fields. PURE MARKER / STATE round: ReMarks='Selector', FeatureWin key 'CommonSelector' (single -1 bucket, WinCredits=0.0, Times=100). NO reel fields, NO CostCredits, NO WinCredits, NO PayoutIdToWinAmount on 100% of 1917 records (0 rounds with any economic payload). Sits in-sequence BEFORE each MoveSpin (140,140 -> 149 Selector -> 36 move); count 1917 == ST36 count 1917 (one selector announces each move feature). role='state' (already in KNOWN_ROLES); NO win => NO settlement, NO synth, NO new plugin/role/wiring. The generic per-ST plugins (spin_type_outcomes/spin_type_rtp_buckets/payouts_by_spin_type/reel_marginal) auto-adapt to render the ST honestly (zero-economy)."
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "Selector|move", "opens": "MoveSpin", "note": "No round-level trigger payid. ST149 (CommonSelector, role=state) is the marker round that precedes/announces each MoveSpin (ST36) — a FREE cost=0 win-driven server-side wild-nudge sharing the triggering paid spin's SpinTimes. ST140 (NormalCollectionSpin) is the paid base; no Wheel collect settlement on this machine (contrast M279 which has ST2 Wheel)."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M209/mode_1"},
+    "evidence": "W1 (onboard-implementer, 2026-06-18): provenance CLEAN — both chunks _cache_version:3 (real), single config bucket 0ee5e387 / code 559db418, bet=1000; 160 robots / 83834 rounds. 3 SpinTypes: ST140 (80000) paid base, ST36 (1917) free move, ST149 (1917) selector marker. ST140 + ST36 field-signature-MATCH M279 ST140/ST36 (core reel fields identical) => STRICT-MIRROR role/play (NormalCollectionSpin / MoveSpin); the generic PER_SPINTYPE plugins + collect_mechanic + respin_dynamics (respin role, already wired) auto-adapt, NO new code. ST149 NOT validated => classified from own fields as role=state / play=CommonSelector (pure zero-economy marker). NO-ABORT checks PASSED: SymbolIndexToRewards='{}' on 100% of ST140 (no live collect channel); 0 win-but-no-payid rounds on ST140 AND ST36 (no _unattributed_residual, no partial-pid collect channel); CurJackpotStoreWin=0 on 100% (test-interface-zeroed, fleet-wide pattern). NO synth rule needed (all wins payid-attributed). DOMAIN sign-off (gate 8) PENDING — status stays 'auto'.",
+    "caveats": [
+      "ST36 move-burst-length histogram (len1/2/3) needs per-round run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces continuation/uplift base-excluded and flags the histogram parser_blind. Framework-team item (same boundary as M279/M43).",
+      "ST140 per-skin (ReelSkin) boost-reel LABELED breakout is parser_blind: the plugin layer receives coarse per-ST RETURN_BUCKET histograms, not per-round ReelSkin — its CONTRIBUTION is captured pooled into the ST140 multiplier distribution. Framework-team item IF a labeled metric is wanted.",
+      "config-md5 single bucket in mode_1 (0ee5e387) — no historical/mixed split; parse-correctness-neutral."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST140/ST36 round but =0 on 100% of 83834 in-sample records. FLEET-WIDE behavior (user-confirmed 2026-06-10 during M279, 2026-06-12 during M275): the CURRENT testspin interface forces the progressive store accumulation to 0 (so the sample correctly shows 0). Parse as-is (contributes 0); the field is already in the ST140/ST36 signature so parsing is FORWARD-COMPATIBLE — when the interface is optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE RTP (excludes the progressive); it ADDS on top once enabled.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

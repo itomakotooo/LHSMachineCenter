@@ -1,0 +1,44 @@
+{
+  "machine_id": "M190",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M190/mode_1 bucket af02d175/cd5158f7 2026-06-18"
+    },
+    "72": {
+      "role": "respin",
+      "play": "UntilLoseRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M190/mode_1 bucket af02d175/cd5158f7 2026-06-18"
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "Respin", "opens": "UntilLoseRespin", "note": "no round-level trigger pid. UntilLoseRespin (ST72) is a win-driven server-side FREE respin (CostCredits=0, ReMarks='Respin') that extends the triggering paid spin (ST1); it chains spin-after-spin until a losing respin ends the burst. ST72 wins carry a NATIVE PayoutIdToWinAmount on a normal PayoutByPayline (no synth needed). ReelSkin 11 is the wild-rich boost-reel state (1289/1422 of in-sample respins), pooled into the respin multiplier distribution."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M190/mode_1", "cross_mode": [1]},
+    "evidence": "W1 (this onboard, 2026-06-18, chunk_0002 8 robots / 41,422 records): provenance clean (_cache_version:3, config af02d175 / code cd5158f7). 2 STs. ST1 = PAID base spin (CostCredits=1000, ReMarks='', full reel signature) -> paid_spin/Normal (strict-reuse generic per-ST plugins). ST72 = FREE respin (CostCredits=0 on 100%, ReMarks='Respin', full reel signature incl native PayoutIdToWinAmount) extending ST1 -> respin/UntilLoseRespin (play = server FeatureWin key); preceded by ST1 (410, the first respin) or ST72 (1012, chained) -> it EXTENDS a paid spin, the respin pattern. ECONOMY INVARIANT EXACT: per-ST sum(WinCredits) == server FeatureWin (Normal 28,609,000 == 28,609,000; UntilLoseRespin 8,585,000 == 8,585,000). ST72 field-signature-matches the validated respin STs (M43 ST50 WinRespin / M279 ST36 MoveSpin) -> STRICT-REUSE respin_dynamics via the generic respin ROLE hook (no new plugin, no machine_spec edit, no new frontend dimension). No novel mechanic: ST72 has 0 wins with no payid (1012/1012 wins carry a payid), no SymbolIndexToRewards / CollectCount / additive collect channel -> no _unattributed_residual, no ABORT.",
+    "caveats": [
+      "ST72 respin-burst-length histogram (chain run-length len1/2/3...) + win-gating proof (which winning respins re-grant another respin) need per-round ReMarks / run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces continuation_prob / uplift / grant-rate base-excluded and flags the histogram parser_blind (same boundary as M43/M279). Framework-team item.",
+      "ReelSkin-labeled boost-reel breakout (skin-1 vs skin-11 on ST72; skin 11 is the wild-rich state, 1289/1422 respins) is parser_blind — the plugin layer receives coarse per-ST RETURN_BUCKET histograms, not per-round ReelSkin. Its CONTRIBUTION is captured (pooled into ST72's multiplier distribution + the multiplier_profile fat tail). Framework-team item IF a labeled boost-reel metric is wanted. (Pattern note matches M279 skin-11: in-engine pure-random rare-boost state, fully testspin-observed, NOT out-of-engine.)",
+      "single cached chunk (chunk_0002 only) in rawdata/M190/mode_1 — parse-correctness is value-agnostic and holds on the available real chunk; numbers (RTP/distributions) should be regenerated over the full cache when more chunks are present."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST72 round but =0 on 100% of in-sample records (41,422/41,422). FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): it IS a real progressive jackpot store, but the CURRENT testspin interface forces its accumulation to 0 (so the sample correctly shows 0). Parse as-is with the progressive contributing 0; the field is already in the ST1/ST72 signature, so parsing is FORWARD-COMPATIBLE — when the interface is later optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE RTP (excludes the progressive); the progressive ADDS on top once enabled.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

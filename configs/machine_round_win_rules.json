@@ -409,6 +409,20 @@
       "applies_to": [
         "M272"
       ]
+    },
+    "m268_collect_settlement": {
+      "_doc": "M268 ST125+ST140 collect settlement: WinCredits>0 with no native PayoutIdToWinAmount -> _unattributed_st125/st140; label_format=spin_type mints real pids st125/st140 (fleet T2, config-only).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          125,
+          140
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M268"
+      ]
     }
   }
 }

@@ -1,0 +1,55 @@
+{
+  "machine_id": "M123",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "87": {
+      "role": "paid_spin",
+      "play": "FishingNormal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "WinCredits"],
+      "observed_fields": ["BetAmount", "CollectCount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_fields_source": "st_inventory M123/mode_1 bucket 1ece493a/58418d37 2026-06-18",
+      "note": "The PAID base reel spin (CostCredits=1000, FeatureWin key FishingNormal). sum(PayoutIdToWinAmount)==WinCredits 80,000/80,000 (full payid attribution, zero residual). CollectCount is present in the signature but is dead-constant 0 (no live collect metronome) and SymbolIndexToRewards is never populated (0/80,000) — this is NOT a live collect-coin channel, just the standard fishing-skin field surface. On 608 rounds ReMarks='Trigger Selector' opens the Selector state (ST111) that leads to the NewFreespin (ST126) session; the trigger round itself carries no pid-666 and pays its own payline win normally."
+    },
+    "111": {
+      "role": "state",
+      "play": "SelectorPreFreespin",
+      "economy": {"win_field": null, "kind": "marker"},
+      "signature": ["ReMarks", "SpinType"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType"],
+      "observed_fields_source": "st_inventory M123/mode_1 bucket 1ece493a/58418d37 2026-06-18",
+      "note": "A bare STATE marker round (ReMarks='Selector'; FeatureWin keys SimpleSelector / SelectorPreFreespin). No reel fields, no CostCredits, no win field — it carries no economy. Sequence is deterministic: ST87 (Trigger Selector) -> ST111 (Selector) -> ST126 (Freespin 1). prev(ST111)=ST87 608/608, next(ST111)=ST126 608/608. It is the pre-freespin selection state; testspin captures it as an empty marker."
+    },
+    "126": {
+      "role": "freespin",
+      "play": "NewFreespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "GameplayTriggerType", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_fields_source": "st_inventory M123/mode_1 bucket 1ece493a/58418d37 2026-06-18",
+      "note": "Granted free spin (CostCredits=0, FeatureWin key NewFreespin). FIELD-SIGNATURE MATCHES the validated ST126 freespin/NewFreespin (M275 precedent) exactly -> strict-reuse the freespin role + PER_SPINTYPE plugins, no new code. ReMarks='Freespin N' with AddFreespin retriggers; sum(PayoutIdToWinAmount)==WinCredits 5,384/5,384 (the freespin win settles on the spin rounds themselves — the server FreespinSettle FeatureWin key is a settlement VIEW, not a separate ST in the round stream). GameplayTriggerType is constant 0 here (single trigger path via the Selector state), so no trigger_paths discriminator block is needed (contrast M275's dual scatter/collect-peak split)."
+    }
+  },
+  "trigger": {"remarks": "Trigger Selector", "opens": "NewFreespin", "via_state": "SelectorPreFreespin", "note": "Single deterministic trigger path: ST87 base spin emits ReMarks='Trigger Selector' (no pid-666; pays its own payline win) -> ST111 Selector state -> ST126 NewFreespin 10-spin session (with AddFreespin retriggers). 608 sessions in the 80,000-paid-spin sample. ST126 GameplayTriggerType==0 on all 5,384 freespin rounds (no second trigger path to discriminate)."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M123/mode_1"},
+    "evidence": "W1 (data-derived, value-agnostic): 2 real chunks (_cache_version:3, single md5 bucket 1ece493a.../58418d37...), 85,992 rounds. ST inventory: ST87 80,000 (paid base, CostCredits=1000, std reel+payid, FishingNormal), ST111 608 (bare state marker, ReMarks='Selector', SimpleSelector/SelectorPreFreespin), ST126 5,384 (granted freespin CostCredits=0, ExtraRatio, ReMarks='Freespin N', NewFreespin). Win conservation: sum(PayoutIdToWinAmount)==WinCredits 80,000/80,000 (ST87) and 5,384/5,384 (ST126) -> full payid attribution, ZERO residual, no live-collect channel (CollectCount dead-0, SymbolIndexToRewards empty), no no-payid settlement. State machine deterministic: ST87(Trigger Selector)->ST111(Selector)->ST126(Freespin). ST126 field-signature matches the validated NewFreespin (M275) exactly -> strict-reuse freespin role + PER_SPINTYPE plugins (no new plugin, no machine_spec change, no attribution rule). CurJackpotStoreWin present & =0 on 85,384/85,384 records (test-interface-zeroed, fleet-wide).",
+    "caveats": [
+      "modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption.",
+      "PROVENANCE: evidence derives from the single md5 bucket 1ece493a.../58418d37.... Structure claims are value-agnostic; every NUMBER belongs to that bucket. Any served report must go through the md5-scoped generate path and be stamped with the chunk md5s.",
+      "parser_blind (per-ST extraction layer items, never fabricated): ER ladder (ExtraRatio field), FS-index x skin x outcome arc, AddFreespin retrigger run-length, per-session freespin-tier distributions — these need the per-ST freespin-progression extractor; coarse per-ST histograms are delivered by the generic PER_SPINTYPE plugins.",
+      "GameplayTriggerType constant 0 across all STs in this bucket; a new value would surface as an unknown path (signal, not residual).",
+      "out-of-engine domain check (gate 8) pending: nothing data-visible suggests a stateful/out-of-engine mechanic beyond the fleet-wide CurJackpotStoreWin zeroing, but per Rule 3 only the user's declaration confirms completeness."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Present on every ST87/ST126 round, =0 on 100% of 85,384 in-sample records. Fleet-wide test-interface behavior (user-confirmed 2026-06-12, M275 gate-8 ruling) — not an M123 specialty. Parse-as-is at 0; parsing is FORWARD-COMPATIBLE when the interface populates the field. The data RTP is the BASE RTP (excludes the progressive).", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [87], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
