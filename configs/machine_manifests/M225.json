@@ -1,0 +1,69 @@
+{
+  "machine_id": "M225",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M225/mode_1 bucket 23607132/40b86cc2 2026-06-18"
+    },
+    "109": {
+      "role": "paid_spin",
+      "play": "ShotMinigame",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M225/mode_1 bucket 23607132/40b86cc2 2026-06-18",
+      "note": "ShotMinigame bonus feature opened from the base spin (ST1 pid 666 path): a fixed-structure burst of reel spins on a distinct skin (ReelSkin=22, ReMarks='ShotMinigameId 1'), burst length 4-6 (263/47/6), the last shot always lands pid 800. Reel/payout ST with NATURAL payids (WinCredits==sum(PayoutIdToWinAmount) on 1323/1323, residual 0) and WinCredits==server FeatureWin 'ShotMinigame' exact (7,071,000). Role=paid_spin by structural kind (reel + cost>0), served by the generic PER_SPINTYPE plugins (no new plugin, no PLAY_ANALYSES entry). EXCLUDED from rtp_integrity.paid_st: it is a triggered bonus feature, not the base game, so its per-record cost must not inflate the base-game RTP denominator (same precedent as M43 st50/st51, M279 st36 carrying BetAmount on a bonus level)."
+    },
+    "126": {
+      "role": "freespin",
+      "play": "NewFreespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "GameplayTriggerType", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "ExtraRatio": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M225/mode_1 bucket 23607132/40b86cc2 2026-06-18",
+      "note": "Signature-matches the validated M275 ST126 (freespin/NewFreespin): granted free-session reel spins (cost=0, ReMarks='Freespin N', ReelSkin=11, ExtraRatio present). STRICT-REUSE role 'freespin' -> freespin_dynamics. NATURAL payids (WinCredits==sum(PayoutIdToWinAmount) on 3127/3127, residual 0; WinCredits==server FeatureWin 'NewFreespin' exact 8,239,220) -> NO synth rule needed. SINGLE trigger path (GameplayTriggerType==0 on 3127/3127; opened via the wheel block which follows the ST1 pid-666 trigger; 203/203 ST126 blocks preceded by an ST2 wheel block) -> no trigger_paths declaration (unlike M275's dual scatter/collect-peak path)."
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M225/mode_1 bucket 23607132/40b86cc2 2026-06-18",
+      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 20, "prize_basis": "win_over_bet"},
+      "note": "Signature-matches the validated M279/M283 ST2 Wheel collect settlement: bare WinCredits, NO PayoutIdToWinAmount, ReMarks='WheelSpin CellIndex N; WheelId 1;' (20 distinct cells, 1-based, WheelId 1; StopSymbolsByCol=['NULL','NULL','NULL']). STRICT-REUSE settlement role + play 'Wheel' -> wheel_dynamics. In this single-bucket sample the wheel paid 0 on 1557/1557 rounds (server FeatureWin 'Wheel'==0), so _unattributed_st2 is already 0; the m225_wheel_settlement SynthesizePayIdRule is declared for forward-compatibility (EXACT M279/M283 precedent) so any win-bearing wheel round mints a single real pid 'st2' instead of leaking to the fallback bucket."
+    }
+  },
+  "trigger": {"payout_id": "666", "remarks": "WheelSpin|Freespin", "opens": "Wheel|NewFreespin", "note": "Base spin (ST1) carrying pid 666 opens the bonus chain: a Wheel block (ST2, the collect settlement burst) -> the NewFreespin granted session (ST126). 203/203 ST126 freespin blocks are preceded by an ST2 wheel block; the wheel block is preceded by an ST1 round carrying pid 666 (sometimes alongside a payline pid). ShotMinigame (ST109) is a SEPARATE bonus feature also opened from ST1 (distinct skin 22, ReMarks 'ShotMinigameId 1'); it carries its own per-record cost (bonus level, not a base-game charge) so it is excluded from rtp_integrity.paid_st. No round-level numeric trigger pid for the wheel/freespin win itself (the wheel settles via WinCredits, attributed by the m225_wheel_settlement rule)."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M225/mode_1"},
+    "evidence": "fleet T2 onboarding (re-run after restart) 2026-06-18. W1 (this implementer pass): mode_1 = 1 real chunk (cache_version 3), single config_md5 bucket 23607132b267538ab4008b2c4fd4a13c / code_md5 40b86cc2; 46,007 rounds across 8 robots; 4 STs {1,2,109,126}. ST roles derived from own fields. ECONOMY INVARIANT EXACT: per-ST sum(WinCredits) == server FeatureWin per play (Normal 22,737,980 / ShotMinigame 7,071,000 / Wheel 0 / NewFreespin 8,239,220; total 38,048,200 == server FeatureWin total). WinCredits==sum(PayoutIdToWinAmount) per round with residual 0 on ST1/ST109/ST126 (no additive coin channel -> no _unattributed_residual). State machine: ST1(base, pid 666 opens bonus) -> ST109 ShotMinigame burst (skin 22, len 4-6) OR ST2 Wheel burst (20 cells) -> ST126 NewFreespin (skin 11). No SymbolIndexToRewards (absent 46,007/46,007), no CollectCount (absent), CurJackpotStoreWin present=0 (test-interface-zeroed). REUSE: ST1=paid_spin/Normal (M43 precedent, generic per-ST); ST109=paid_spin/ShotMinigame (NEW play, NO new plugin -- standard reel/payout ST served by generic PER_SPINTYPE, natural payids, excluded from paid_st); ST126=freespin/NewFreespin (signature-match M275, strict-reuse freespin_dynamics, natural payids no synth); ST2=settlement/Wheel (signature-match M279/M283, strict-reuse wheel_dynamics + m225_wheel_settlement synth, cell_count 20). base_hash unchanged (3ddaa183f38c). report_engine smoke: rtp_integrity passed, no _unattributed_* fallback.",
+    "caveats": [
+      "Single mode_1 chunk, single config_md5 bucket (23607132.../40b86cc2...): structure claims are value-agnostic; every NUMBER belongs to this bucket. Any served report must go through the md5-scoped generate path and be stamped with the chunk md5s.",
+      "ST109 ShotMinigame role=paid_spin by structural kind (reel + cost>0) but EXCLUDED from rtp_integrity.paid_st (it is a triggered bonus feature, not the base game; including its per-record cost would inflate the base-game RTP denominator -- same precedent as M43 st50/st51 and M279 st36). The stateless reset (LastCredits = base + WinCredits) means the wallet trace cannot independently confirm whether its CostCredits=1000 is a real wallet charge or a per-record BetAmount echo; the conservative, framework-consistent choice keeps the denominator = base game (ST1) only. Re-confirm at gate 8 if a per-feature cost split is wanted.",
+      "ST2 wheel paid 0 on 1557/1557 in this bucket (server FeatureWin 'Wheel'==0): the m225_wheel_settlement synth rule is declared for forward-compatibility (a win-bearing wheel round in another bucket/mode mints pid 'st2'), and is harmless at win=0. The 20-cell landing map + per-cell prize shape are parser_blind (per-round ReMarks CellIndex accumulator needed -- same boundary as M279). Framework-team item.",
+      "ST109 ShotMinigame per-shot burst structure (the always-pid-800 final shot, burst-length 4/5/6 histogram, per-shot node ladder) is parser_blind (per-round run-length / ReMarks accumulation lives in the base-closure parser); the generic per-ST plugins surface ST109's hit-rate / multiplier distribution / RTP-share. Framework-team item if a labeled ShotMinigame burst metric is wanted.",
+      "ST126 NewFreespin ExtraRatio (freespin multiplier FIELD) ladder + FS-index x outcome arc are parser_blind (same per-ST extraction boundary as M275); freespin_dynamics surfaces the session cadence / hot-board uplift base-derivable.",
+      "modes: [1] only -- the only mode with cached rawdata at this pass. Extend on data, never by assumption (M43/M279 cross-mode pattern)."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Present on every ST1/ST109/ST126 round (absent on ST2) and =0 on 100% of in-sample records. Fleet-wide test-interface behavior (user-confirmed 2026-06-12 during M275 gate 8): a real progressive jackpot store whose accumulation the CURRENT testspin interface forces to 0. Parse-as-is at 0; the field is in the ST signature so parsing is FORWARD-COMPATIBLE when the interface populates it. The data RTP is the BASE RTP (excludes the progressive); it grows when the field is enabled.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": "m225_wheel_settlement (synthesize_pay_id, spin_types=[2], label_format=spin_type) -- added to configs/machine_round_win_rules.json; EXACT M279/M283 precedent. Declared for forward-compatibility (ST2 win=0 in this bucket so _unattributed_st2 is already 0); mints real pid 'st2' for any win-bearing wheel round.",
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
