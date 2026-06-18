@@ -6,6 +6,73 @@
   "_added_2026_06_10": "v4 M279 Wheel settlement rule (synthesize_pay_id type — EXACT M43 precedent). M279 ST2 (Wheel) carries WinCredits>0 on 100% of rounds with NO PayoutIdToWinAmount (and no BetAmount), so without this rule the whole 76,780,000 wheel prize (4.34% of all payback) lands in _unattributed_st2 and the RTP-integrity gate FAILS (layer2_fallback_buckets_found=['_unattributed_st2']). The config-only SynthesizePayIdRule attributes the whole ST2 win to a single real pid 'st2' (label_format=spin_type), zeroing the fallback. PROVEN config-only in 02_reuse.md (6 real chunks: _unattributed_st2 9,400,000 -> 0, real pid 'st2' == 9,400,000 exact). The wheel's discrete prize-lottery shape (5/10/20/30/50/100x, 12 cells, jackpot cells 8&10) lives in the wheel_dynamics analysis (play-keyed to 'Wheel'), NOT spread across multiplier-tier pids (per charter invariant 4). One honest feature row keeps the payid table semantically clean.",
   "_added_2026_06_16": "v5 M278 JewelFever (ST160) hold-and-respin settlement rule (synthesize_pay_id type — EXACT M43/M279 precedent). M278 ST160 (JewelFeverRespin, role hold_respin) settles ONCE per burst (single Settle=True, always-last round) but carries NO PayoutIdToWinAmount on 100% of 5,594 rows (incl. all 738 win-bearing settle rows — VERIFIED in 01_understanding.md). Without this rule the whole 74,523,800 ST160 prize (43.1% of all payback) lands in _unattributed_st160 and the RTP-integrity gate FAILS (layer2_fallback_buckets_found=['_unattributed_st160']). The config-only SynthesizePayIdRule attributes the whole ST160 win to a single real pid 'st160' (label_format=spin_type), zeroing the fallback. PROVEN config-only in 02_reuse.md (1 real chunk f33ddcf0: _unattributed_st160 74,523,800 -> 0, real pid 'st160' == 74,523,800 exact, rtp_integrity passed). The real felt shape — burst-length value-build, per-trigger-path split (3 jewel skins 5901/5902/5903 + collect_peak, premium-Red tier), settled multiplier banding — lives in the freespin_dynamics analysis (hold_respin role) + the trigger_paths anchor-walk dimension, NOT spread across multiplier-tier pids (per charter invariant 4). One honest feature row keeps the payid table semantically clean.",
   "rules": {
+    "m225_wheel_settlement": {
+      "_doc": "M225 Wheel (ST2) collect settlement: bare WinCredits with NO PayoutIdToWinAmount (and no BetAmount), ReMarks='WheelSpin CellIndex N; WheelId 1;' (20 cells). In the single cached mode_1 bucket the wheel paid 0 on 1557/1557 rounds (server FeatureWin 'Wheel'==0), so _unattributed_st2 is already 0 WITHOUT this rule. Declared for forward-compatibility (EXACT M279/M283 precedent): any win-bearing wheel round (other bucket/mode/re-sample) is attributed to a single real pid 'st2' (label_format=spin_type) instead of leaking to the fallback bucket and failing rtp-integrity. The 20-cell prize-lottery shape lives in the wheel_dynamics analysis (play-keyed 'Wheel'), NOT spread across multiplier-tier pids (charter invariant 4). EXACT M279/M283 precedent (m279_wheel_settlement / m283_wheel_settlement), config-only, no closure change.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M225"
+      ]
+    },
+    "m261_wheel_settlement": {
+      "_doc": "M261 Wheel collect feature settles through TWO complementary no-payid channels: ST2 (WheelSpin, single-cell wheels: WinCredits>0 on 185/185 win rounds, no PayoutIdToWinAmount, no BetAmount) and ST137 (PreWheel aggregate, multi-cell wheels: WinCredits>0 on 338/338 win rounds carrying the credited Sum(ST2 WillWin), no PayoutIdToWinAmount). The two are MUTUALLY EXCLUSIVE per wheel episode (0 episodes win on both -> NO double-count; 185 ST2-only + 338 ST137-only across both chunks). Without this rule both prizes land in _unattributed_st2 + _unattributed_st137 and the RTP-integrity gate fails. label_format=spin_type attributes each to a single real pid 'st2' / 'st137' (each wheel-credit channel as one honest feature row). ST140 NormalCollectionSpin is fully payline-attributed (WinCredits==sum(payid) 80,000/80,000) and ST126 NewFreespin carries native payids (2,061/2,061), so neither needs synthesis (CLEAN synth, NOT a residual: ST2/ST137 carry no competing payline pid). The discrete wheel prize-lottery shape (CellIndex 2-14, 5 WheelId tiers) lives in the wheel_dynamics analysis (play-keyed to 'Wheel'), NOT spread across multiplier-tier pids (charter invariant 4). EXACT M247 PreWheel + M279/M283 Wheel SynthesizePayIdRule precedent (config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2,
+          137
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M261"
+      ]
+    },
+    "m247_prewheel_settlement": {
+      "_doc": "M247 PreWheel (ST137) settlement: WinCredits>0 with NO PayoutIdToWinAmount on 100% of 1,794 rows (488 win-bearing). Without this rule the whole 21,984,000 PreWheel prize (34.75% of all payback) lands in _unattributed_st137 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st137' (the PreWheel feature as one honest feature row). per-feature WinCredits == server analysisResult SummaryWin['PreWheel'] exact (21,984,000, both chunks). ST137 is a pure bare-WinCredits settlement (no payline payid alongside) = the CLEAN synth case, NOT a residual coin channel. EXACT M43/M279/M278 precedent (synthesize_pay_id, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          137
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M247"
+      ]
+    },
+    "m247_listrewardwheel_settlement": {
+      "_doc": "M247 ListRewardWheel (ST139) minigame settlement: WinCredits>0 with NO PayoutIdToWinAmount on 100% of 2,005 rows (211 win-bearing); ReMarks='Minigame CellIndexes: <10 cells>,curTimes:N,totalTimes:M'. Without this rule the whole 6,228,000 ListRewardWheel prize (9.85% of all payback) lands in _unattributed_st139 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st139' (the minigame as one honest feature row). per-feature WinCredits == server analysisResult SummaryWin['ListRewardWheel'] exact (6,228,000, both chunks). The per-round CellIndex landing map + RewardLastNode reward-node ladder are parser_blind (per-ST extraction accumulator, framework-team), NOT spread across multiplier-tier pids (charter invariant 4). EXACT M43/M279/M278 precedent (synthesize_pay_id, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          139
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M247"
+      ]
+    },
+    "m245_creditsymbol_settlement": {
+      "_doc": "M245 CreditsSymbol hold-and-respin: ST130 (CreditsSymbolRespinSettle, the FinalNormalMinigame settle of the ST125 held-reel respin block) carries WinCredits>0 on 590/590 with NO PayoutIdToWinAmount (and no payline), and ST2 (Wheel collect settlement) carries no PayoutIdToWinAmount/no BetAmount. Without this rule the ST130 prize (3,851,309) lands in _unattributed_st130 and any win-bearing ST2 wheel round in _unattributed_st2, failing the RTP-integrity gate. label_format=spin_type mints single real pids 'st130' / 'st2' (each feature as one honest row). ST140 NormalCollectionSpin is fully payline-attributed (WinCredits==sum(payid) 80,000/80,000) and ST125 wins 0, so neither needs synthesis (CLEAN synth, NOT a residual: ST130/ST2 carry no competing payline pid). The held-reel hold-respin felt shape (LockReels growth, settle multiplier banding) lives in freespin_dynamics (hold_respin role); the 12-cell wheel shape in wheel_dynamics (play 'Wheel'). EXACT M43/M279/M278 precedent (config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          130,
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M245"
+      ]
+    },
     "m283_wheel_settlement": {
       "_doc": "M283 Wheel (ST2) collect settlement: WinCredits>0 on 100% with no PayoutIdToWinAmount (and no BetAmount). Without this rule the whole 3,280,000 wheel prize (4.06% of all payback) lands in _unattributed_st2 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st2' (the wheel as one honest feature row). The discrete prize-lottery shape (5/10/20/50/100/200x, 12 cells, jackpot cell 10) lives in the wheel_dynamics analysis (play-keyed to 'Wheel'), NOT spread across multiplier-tier pids (per charter invariant 4). PROVEN config-only in M283/02_reuse.md (_unattributed_st2 3,280,000 -> real pid st2 exact). M283 = M279 minus ST36; EXACT M279 precedent (m279_wheel_settlement).",
       "type": "synthesize_pay_id",
@@ -69,6 +136,19 @@
       },
       "applies_to": [
         "M278"
+      ]
+    },
+    "m274_listrewardwheel_settlement": {
+      "_doc": "M274 ListRewardWheel (ST139, role hold_respin) free granted hold-and-respin board collect: win-bearing PER ROUND (5,414/11,595 win>0, NO Settle field) with NO PayoutIdToWinAmount on 100% of 230,525 rows. Without this rule the whole ST139 prize (767,515,000 on bucket d35327a7 == server FeatureWin[ListRewardWheel] exact) lands in _unattributed_st139 and the RTP-integrity gate fails (layer2_fallback_buckets_found=['_unattributed_st139']). label_format=spin_type attributes the whole ST139 win to a single real pid 'st139' (the ListRewardWheel respin as one honest feature row). The real felt shape -- per-burst trigger-path split (listrewardwheel_random pid 5801 win==0), settled multiplier banding, locking board (AddLock/TotalLock), cell prizes -- lives in the freespin_dynamics analysis (hold_respin role) + the trigger_paths anchor-walk dimension, NOT spread across multiplier-tier pids (per charter invariant 4). EXACT M278 ST160 (m278_jewelfever_settlement) / M43 ST51 precedent. NB: distinct from the legacy bcm_cycle_anchor_m274 rule below (a flat-manifest-era bcm_cycle_anchor that anchors the bonus block at CollectCount==1000; DORMANT on this cached data where CollectCount is flat 0; left untouched, harmless/additive).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          139
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M274"
       ]
     },
     "bcm_cycle_anchor_m274": {
