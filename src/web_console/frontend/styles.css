@@ -2481,6 +2481,19 @@ button.feature-chip {
 .catalog-item.unavailable {
   opacity: 0.45;
 }
+/* Legacy / old-framework machine (no SpinType-native manifest): greyed out —
+   on-disk reports still viewable, but the new engine can't regenerate. The
+   detail-pane "⟳ 生成 Report" button is disabled separately. */
+.catalog-item.legacy {
+  opacity: 0.5;
+  filter: grayscale(0.85);
+}
+.catalog-item.legacy.active,
+.catalog-item.legacy.focused {
+  /* keep selection legible even when greyed */
+  opacity: 0.8;
+  filter: grayscale(0.4);
+}
 .catalog-item {
   border-left: 3px solid #d4ddea;
 }

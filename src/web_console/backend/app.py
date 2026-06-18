@@ -2803,11 +2803,21 @@ def load_machines(
     if target.exists():
         payload = read_json(target)
         machines = payload.get("machines", [])
+        # SpinType-native engine support flag: a machine is "registered"
+        # (the new engine can analyze / (re)generate reports for it) iff a
+        # manifest configs/machine_manifests/<base>.json exists. Unregistered
+        # machines are the legacy/old-framework fleet — their on-disk reports
+        # are still viewable, but report_engine 422s on (re)generate. The
+        # operator catalog uses this to grey them out + disable regenerate.
+        _manifests_dir = Path(__file__).resolve().parents[3] / "configs" / "machine_manifests"
         if isinstance(machines, list):
             for m in machines:
                 logic = m.get("logicClassNames", [])
                 m.setdefault("category", _classify_machine(logic))
                 m.setdefault("available", bool(logic))
+                # base name (a variant Mxxx$... inherits its base's manifest)
+                _base = str(m.get("machine", "")).split("$", 1)[0]
+                m["registered"] = bool(_base) and (_manifests_dir / f"{_base}.json").exists()
                 # Count on-disk report versions that have a player_impact_summary.json.
                 # Empty dirs and dirs holding only machine_config.json / progress.jsonl
                 # (failed runs) are excluded so the catalog count matches what the panel
