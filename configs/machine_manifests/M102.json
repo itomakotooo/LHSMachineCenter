@@ -1,0 +1,59 @@
+{
+  "machine_id": "M102",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M102/mode_1 bucket 5db83bbf/cdc5e43e 2026-06-18 (80,000 ST1 rows, 2 real v3 chunks)"
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M102/mode_1 bucket 5db83bbf/cdc5e43e 2026-06-18 (617 ST2 rows, sparse settlement signature, no native payid)",
+      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 22, "prize_basis": "win_over_bet"}
+    }
+  },
+  "trigger": {
+    "payout_id": "666",
+    "remarks": "Trigger Wheel",
+    "opens": "Wheel",
+    "note": "ST1 pid 666 / ReMarks ' Trigger Wheel' is a win-0 marker (617/80,000 = 0.771% of paid spins) that opens the Wheel (ST2). The wheel (ST2) is the settlement that pays direct credits (WinCredits) and returns to ST1. 617 triggers -> 617 ST2 wheels (exact 1:1, no orphans). No downstream freespin/lock block exists in mode-1 data (only ST1 + ST2 fire) -> NO trigger_paths dimension (the wheel is the terminal settlement, single exhaustive path). 666 is an observed OUTCOME marker, not a derivable grid rule (same caveat as M207's 667)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M102/mode_1"},
+    "evidence": "T1 exact-archetype onboard (manifest-only, NO new code). W1 provenance: 2 real v3 chunks (chunk_0001/0002), single config-md5 bucket 5db83bbf/cdc5e43e, _bet 1000; 80,617 rounds = 80,000 ST1 + 617 ST2; no virtual contamination. ST1 = paid_spin/Normal (CostCredits=1000 on 100%, native PayoutIdToWinAmount: sum(payid)==WinCredits 80,000/80,000; observed_fields BYTE-IDENTICAL to validated M70/M207 ST1; trigger pid 666 / ReMarks ' Trigger Wheel' = win-0 wheel-open marker, 617 events). ST2 = settlement/Wheel (no native payid: sparse signature, observed_fields BYTE-IDENTICAL to validated M283/M207 ST2; ReMarks 'WheelSpin CellIndex <n>; WheelId 1;', CellIndex 2..22 observed -> cell_count 22, cell 1 unobserved; WinCredits the only real win, 25,211,000). 617 ST1 triggers -> 617 ST2 wheels (exact 1:1). Reuse verdict: ST1 STRICT-REUSE CROSS_CUTTING+PER_SPINTYPE (native payid, no synth); ST2 STRICT-REUSE wheel_dynamics (play-keyed Wheel) + wheel_cells st_extract + config-only m102_wheel_settlement SynthesizePayIdRule (NEEDS_SYNTH, coordinator writes the rule). ZERO new plugin/role/closure change; base_hash 3ddaa183f38c unchanged.",
+    "caveats": [
+      "ST2 wheel prize ladder is DATA-DERIVED PER CELL via the wheel_cells st_extract extractor (per-round ReMarks 'WheelSpin CellIndex <n>' -> prize=WinCredits/bet). CellIndex 2..22 observed across 617 wheels; cell_count 22 (max observed); cell 1 unobserved in this sample -> the cell_map marks it {prize_multiplier: null, observed: false} (HONEST, never fabricated/interpolated); more wheels would pin it. Not required to onboard mode 1.",
+      "GameplayTriggerType present and constant 0 on all 80,000 ST1 (field absent on ST2). Present-but-constant; not a feature signal in this sample (known red herring elsewhere). Parse-as-is; forward-compatible (in the ST1 signature).",
+      "single config-md5 bucket 5db83bbf/cdc5e43e (2 chunks, same md5; no mixed-md5 pooling concern). modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption; any SERVED report goes through the md5-scoped generate path stamped with the chunk md5s.",
+      "RTP magnitude is NOT an onboarding criterion (parse-correctness is). Paid base unit = ST1 CostCredits only; ST2 carries no cost. Per feedback_dev_ci_scope dev does not chase CI.",
+      "validation.status stays 'auto' until breaker + gate-7 render verify + coordinator gate-8 user domain sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' present on every ST1 round (ST2 lacks the field) but =0 on 100% of 80,000 in-sample records. Established fleet-wide test-interface-zeroing pattern (gate-8 ruling + M279/M283/M207 precedent): a real progressive jackpot store the current testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the ST1 signature, so parsing is FORWARD-COMPATIBLE — when the interface populates it the existing parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

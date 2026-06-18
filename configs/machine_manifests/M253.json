@@ -1,0 +1,120 @@
+{
+  "machine_id": "M253",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_field_presence": {
+        "AccCredits": 1.0,
+        "BetAmount": 1.0,
+        "CollectCount": 1.0,
+        "CostCredits": 1.0,
+        "CreditsSymbols": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "SymbolIndexToRewards": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M253/mode_1 bucket 214fdde6/a8604378 2026-06-18 (chunk_0002.json, 40,000 ST140 rounds, all 22 fields 100% present)"
+    },
+    "126": {
+      "role": "freespin",
+      "play": "NewFreespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "GameplayTriggerType", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "ExtraRatio": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M253/mode_1 bucket 214fdde6/a8604378 2026-06-18 (chunk_0002.json, 1,310 ST126 rounds = 262 sessions x 5 spins, all 19 fields 100% present)",
+      "trigger_paths": {
+        "fallback": {
+          "kind": "trigger_anchor_walk",
+          "note": "NO usable round_field discriminator on M253: GameplayTriggerType is constant 0 on ALL 1,310 ST126 rounds (and on all 40,000 ST140 rounds) — it does NOT distinguish scatter from collect-peak here (unlike M275 where GTT={0,2}). Omitting a round_field discriminator makes the extractor use the trigger_anchor_walk fallback (M278 precedent). The walk reads the opening paid ST140 (round_ctx.last_paid_round): scatter = pid 666 present in PayoutIdToWinAmount with win==0 (222/222 win==0, VERIFIED); collect_peak = CollectCount==1000 (40/40, VERIFIED). 262 sessions = 222 scatter + 40 collect-peak; 1 opening ST140 carries BOTH pid-666 AND CollectCount==1000 (a multi-trigger edge, routed to the surfaced multi:collect_peak+scatter bucket under additive_sessions, never silently merged — identical to M275's 1-in-909 / M278's double edge)."
+        },
+        "paths": {
+          "scatter": {"opened_by": {"payout_id": "666"}, "label": "scatter (3 bonus symbols)"},
+          "collect_peak": {"opened_by": {"counter": "CollectCount", "at_peak": 1000}, "label": "collect-peak (pity timer)"}
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": "666",
+    "remarks": "Freespin",
+    "opens": "NewFreespin",
+    "note": "TWO trigger paths open the SAME NewFreespin 5-spin session (ReMarks 'Freespin 1'..'Freespin 5'): (a) scatter pid 666 = bonus marker on the opening paid ST140 (win 0; 222/262 sessions, ~0.555%/paid spin, random); (b) CollectCount==1000 on the opening paid ST140 (deterministic pity timer, +1 every paid spin, 40/262 sessions, 0.100%/paid spin). The per-round GameplayTriggerType does NOT discriminate them on this machine (constant 0 everywhere), so the trigger_paths block uses the trigger_anchor_walk fallback that reads the opening paid round (M278 precedent), NOT a round_field discriminator. 1 opening ST140 carries both anchors (multi-trigger edge -> surfaced multi: bucket). Both STs carry a NATURAL payid (sum(PayoutIdToWinAmount)==WinCredits exact on 40,000/40,000 ST140 AND 1,310/1,310 ST126), so NO attribution rule is needed. AccCredits (active collect metronome, =100xCollectCount-class) is a derived counter, never paid as credits directly."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M253/mode_1"},
+    "evidence": "st_inventory + parse_rounds M253/mode_1 (single chunk chunk_0002.json, 8 robots x 5,000 spins, 41,310 rounds, _cache_version 3 REAL, _bet 1000, single md5 bucket 214fdde6.../a8604378...): SpinType tally {140:40000, 126:1310} (genuinely TWO STs). ST140 = paid base (CostCredits=1000 on 100%, ReMarks '' on 100%, GTT constant 0, ReelSkin 1; active collect mechanic — CollectCount 1..1000 cycling, AccCredits nonzero on 100%, SymbolIndexToRewards populated on 100%). ST126 = free NewFreespin (CostCredits=0 on 100%, ReMarks 'Freespin 1'..'Freespin 5' = 262 x 5-spin sessions, GTT constant 0, ExtraRatio constant 0, ReelSkin {11:1110, 18:200} premium freespin reels). Field signatures match the validated ST140 (M186/M275/M278) and ST126 (M275) shapes EXACTLY (always-present field sets identical; verified not by ST number but by field signature). Conservation: ST140 sum(PayoutIdToWinAmount)==sum(WinCredits)==23,045,000 (0 mismatch / 40,000); ST126 sum(PayoutIdToWinAmount)==sum(WinCredits)==16,940,900 (0 mismatch / 1,310) -> all win captured in native payid space on BOTH STs, no separate win channel, NO synth rule. Trigger: 262 freespin sessions = 222 scatter (pid 666 win==0 on opening ST140) + 40 collect-peak (CollectCount==1000 on opening ST140) + 1 multi-trigger edge; clean, no orphans. report_engine.generate_report_from_chunks: rtp_integrity_check.passed=True, NO _unattributed_* fallback bucket (share 0), manifest loads. NOT user-signed-off (validation.status='auto').",
+    "caveats": [
+      "T1 manifest-only onboard (exact-archetype: active-collect NormalCollectionSpin paid base + NewFreespin freespin; M275/M278 archetype). STRICT-REUSE of the shared paid_spin per-ST plugins + collect_mechanic + the freespin role (freespin_dynamics) + the generic trigger_path anchor-walk extractor. NO new code, NO new plugin, NO fork, NO closure change, NO wiring change (freespin already in KNOWN_ROLES + ROLE_ANALYSES). base_hash 3ddaa183f38c unchanged before/after (manifest is base-excluded).",
+      "TRIGGER-PATH discriminator: M253 uses the trigger_anchor_walk fallback (M278 precedent), NOT a round_field discriminator — GameplayTriggerType is constant 0 on every ST126 (and ST140) round here and so cannot split scatter from collect-peak (contrast M275 where GTT={0,2} discriminates per round). The anchor walk reads the opening paid ST140: pid 666 win==0 (scatter) / CollectCount==1000 (collect_peak). VERIFIED 222 + 40 = 262 sessions, 1 multi-trigger edge surfaced (never merged).",
+      "CollectCount==1000 collect-peak path is ACTIVE on M253 (40 deterministic peak triggers observed; contrast M186 where CollectCount/AccCredits were inert at 0). collect_mechanic fires on ST140; cycle 1000.",
+      "CurJackpotStoreWin present and =0 on 100% of all 41,310 records (established fleet-wide test-interface zeroing; see out_of_engine_mechanics). RTP excludes any progressive.",
+      "GameplayTriggerType present and constant 0 on all 41,310 rounds in mode 1 (this machine emits it; non-zero meaning undetermined from mode-1 data). Parse-as-is (constant 0); forward-compatible. This is WHY the trigger_paths block uses the anchor-walk fallback rather than a GTT round_field discriminator.",
+      "ExtraRatio present and constant 0 on all 1,310 ST126 rounds in this sample (the ExtraRatio FS-multiplier ladder does not vary in mode 1). Parse-as-is.",
+      "Single config-md5 bucket 214fdde6/a8604378 (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
+      "parser_blind (framework-team, NEVER fabricated): per-path session-TIER distributions, the ExtraRatio FS-index ladder, FS-index x skin x outcome arc, st140 bonus-count near-miss ladder, per-round collect/symbol maps — these need the freespin-progression / per-ST extraction accumulators (M275/M278 boundary). The EXACT trigger-path split (scatter vs collect_peak round/win/session counts) IS delivered by the generic trigger_path anchor-walk extractor.",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs were not opened; they may exercise other STs, non-zero GameplayTriggerType, or different freespin structure and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST140/ST126 round but =0 on 100% of 41,310 records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M275/M278/M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in both ST signatures so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). The reported RTP is the BASE RTP (excludes the progressive); it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [140],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

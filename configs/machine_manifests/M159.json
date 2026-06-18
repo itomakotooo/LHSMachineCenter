@@ -1,0 +1,171 @@
+{
+  "machine_id": "M159",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M159/mode_1 bucket 0c4d1b20/97249d1f 2026-05-20 (chunk_0002.json, 40000 st1 rounds, _cache_version 3 REAL). CostCredits=BetAmount=1000 on 100%; ReMarks empty 40000/40000; ReelSkin=1; WinCredits nonzero 9.70%; PayoutIdToWinAmount natural payid present on every win, sum(PayoutIdToWinAmount)==WinCredits on 100%; CurJackpotStoreWin=0 on 100%. Field signature matches validated M42/M43 ST1 (Normal/paid_spin) EXACTLY."
+    },
+    "50": {
+      "role": "respin",
+      "play": "WinRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M159/mode_1 bucket 0c4d1b20/97249d1f 2026-05-20 (chunk_0002.json, 407 st50 rounds, _cache_version 3 REAL). CostCredits=0 on 100% (FREE re-spin extending the paid spin — the respin role-defining property), BetAmount=1000 (carries bet at cost 0 -> rtp_integrity.paid_st=[1] only, per M42/M43 precedent); ReMarks='ReSpin' on 100%; WinCredits nonzero on 100%; PayoutIdToWinAmount natural payid present on 100%, sum(PayoutIdToWinAmount)==WinCredits on 100%; CurJackpotStoreWin=0 on 100%. Field signature matches validated M42/M43 ST50 (WinRespin/respin) EXACTLY."
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "ReSpin",
+    "opens": "WinRespin",
+    "note": "no round-level trigger pid; the respin fires server-side after a base WIN and chains on its own win (ReMarks='ReSpin', 407 st50 rounds vs 40000 st1). Win-gating rule (which winning configs open a respin) not in rawdata (parser_blind, inherited from M42/M43). No trigger_paths dimension (no per-ST discriminator)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M159/mode_1"
+    },
+    "evidence": "EXACT-ARCHETYPE onboarding (fleet T1 batch, manifest-only, NO new code). Provenance: single config-md5 bucket 0c4d1b20/97249d1f, _cache_version 3 REAL (single chunk chunk_0002.json, 8 robots, 40407 rounds). ST inventory {1: 40000, 50: 407} — ONLY ST1 + ST50 emitted (the brief's ST2/ST14/ST15/ST51/etc. are NOT present on this machine). Both STs field-signature match the CONFIRMED M42/M43 validated STs EXACTLY (3-layer: signature match + both reuse CROSS_CUTTING+PER_SPINTYPE+respin role's respin_dynamics verbatim, no fork/modify; live report_engine generates clean, rtp_integrity passed, zero _unattributed_*). ST1=Normal/paid_spin (CostCredits=1000, the ONLY paid ST), ST50=WinRespin/respin (CostCredits=0 free extension). BOTH have NATURAL PayoutIdToWinAmount (sum(payid)==WinCredits 100%) -> NO SynthesizePayIdRule needed. respin role already in KNOWN_ROLES, ROLE_ANALYSES['respin']=respin_dynamics already wired, frontend _stDimRespin already exists -> NO machine_spec edit, NO new plugin, NO frontend change. base_hash unchanged (manifest base-excluded).",
+    "caveats": [
+      "CurJackpotStoreWin=0 across all 40407 rounds — the known fleet test-interface zeroing behavior (MEMORY 2026-06-12 ruling + M279/M283/M70/M42 sign-off), NOT a per-machine jackpot declaration. Parse as-is at 0; field is in both ST signatures so parsing is FORWARD-COMPATIBLE.",
+      "respin win-gating proof + burst-length histogram require per-round ReMarks run-length accumulation in the base-closure parser (parser_blind, inherited boundary from M42/M43). respin_dynamics computes every metric the frozen accumulators expose. Framework-team work, not an M159 reuse failure.",
+      "GameplayTriggerType present and constant 0 on all rounds in mode 1 (this machine emits it). Parse as-is (constant 0); not a signature-defining field; forward-compatible.",
+      "Single config-md5 bucket (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs may exercise other STs and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
+    ],
+    "date": "2026-06-18",
+    "gate8_note": "PENDING user gate-8 domain sign-off (fleet T1 batch). Objective gates 1-6 verified by implementer; gate-7 render verify + user sign-off owned by coordinator."
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every st1/st50 round but =0 on 100% of 40407 records. Established fleet-wide test-interface zeroing, declaration-confirmed (MEMORY: gate-8 ruling + M279/M283/M70/M42 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in both ST signatures so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

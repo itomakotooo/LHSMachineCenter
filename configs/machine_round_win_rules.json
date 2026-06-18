@@ -106,7 +106,9 @@
         "M90$TopDollarSelector$2$40",
         "M132$TopDollarSelector$0$",
         "M132$TopDollarSelector$1$",
-        "M132$TopDollarSelector$2$40"
+        "M132$TopDollarSelector$2$40",
+        "M12",
+        "M90"
       ]
     },
     "m207_wheel_settlement": {
@@ -120,6 +122,292 @@
       },
       "applies_to": [
         "M207"
+      ]
+    },
+    "m3_wheel_settlement": {
+      "_doc": "M3 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M3"
+      ]
+    },
+    "m48_wheel_settlement": {
+      "_doc": "M48 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M48"
+      ]
+    },
+    "m102_wheel_settlement": {
+      "_doc": "M102 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M102"
+      ]
+    },
+    "m151_wheel_settlement": {
+      "_doc": "M151 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M151"
+      ]
+    },
+    "m158_wheel_settlement": {
+      "_doc": "M158 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M158"
+      ]
+    },
+    "m175_wheel_settlement": {
+      "_doc": "M175 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M175"
+      ]
+    },
+    "m176_wheel_settlement": {
+      "_doc": "M176 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M176"
+      ]
+    },
+    "m198_wheel_settlement": {
+      "_doc": "M198 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M198"
+      ]
+    },
+    "m204_wheel_settlement": {
+      "_doc": "M204 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M204"
+      ]
+    },
+    "m213_wheel_settlement": {
+      "_doc": "M213 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M213"
+      ]
+    },
+    "m217_wheel_settlement": {
+      "_doc": "M217 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M217"
+      ]
+    },
+    "m219_wheel_settlement": {
+      "_doc": "M219 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M219"
+      ]
+    },
+    "m227_wheel_settlement": {
+      "_doc": "M227 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M227"
+      ]
+    },
+    "m232_wheel_settlement": {
+      "_doc": "M232 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M232"
+      ]
+    },
+    "m233_wheel_settlement": {
+      "_doc": "M233 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M233"
+      ]
+    },
+    "m241_wheel_settlement": {
+      "_doc": "M241 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M241"
+      ]
+    },
+    "m259_wheel_settlement": {
+      "_doc": "M259 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M259"
+      ]
+    },
+    "m267_wheel_settlement": {
+      "_doc": "M267 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M267"
+      ]
+    },
+    "m276_wheel_settlement": {
+      "_doc": "M276 ST2 wheel settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st2 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st2'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M276"
+      ]
+    },
+    "m54_minigame_settlement": {
+      "_doc": "M54 ST51 minigame settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st51 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st51'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          51
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M54"
+      ]
+    },
+    "m75_minigame_settlement": {
+      "_doc": "M75 ST51 minigame settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st51 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st51'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          51
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M75"
+      ]
+    },
+    "m272_freespin_settlement": {
+      "_doc": "M272 ST126 freespin settlement: WinCredits>0 with no native PayoutIdToWinAmount; without this rule it lands in _unattributed_st126 and rtp-integrity fails. label_format=spin_type mints a single real pid 'st126'. EXACT M283/M279/M44/M275 precedent (fleet T1 wave 2, config-only, no closure change).",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          126
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M272"
       ]
     }
   }

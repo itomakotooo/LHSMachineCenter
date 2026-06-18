@@ -1,0 +1,206 @@
+{
+  "machine_id": "M54",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M54/mode_1 bucket 45ef1448/e449b20f 2026-06-18 (single chunk chunk_0002.json, 40000 st1 rounds, _cache_version 3 REAL). CostCredits=BetAmount=1000 on 100%; ReMarks='' on 40000/40000; GameplayTriggerType const 0; CurJackpotStoreWin const 0; native PayoutIdToWinAmount on win rounds (8.29% nonzero-win frac). EXACT signature match to confirmed M44/M70 ST1 paid_spin/Normal."
+    },
+    "50": {
+      "role": "respin",
+      "play": "WinRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M54/mode_1 bucket 45ef1448/e449b20f 2026-06-18 (742 st50 rounds). CostCredits=0 (FREE reel-spin extension), ReMarks='ReSpin' on 742/742, native PayoutIdToWinAmount on win rounds (49.19% nonzero-win frac), full reel signature. EXACT signature match to confirmed M42/M44 ST50 respin/WinRespin."
+    },
+    "51": {
+      "role": "settlement",
+      "play": "WinMiniGame",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M54/mode_1 bucket 45ef1448/e449b20f 2026-06-18 (324 st51 rounds). Sparse settlement signature, NO reel fields, NO BetAmount, NO CostCredits, NO PayoutIdToWinAmount (native payid present 0.0); WinCredits nonzero on 100%; ReMarks='MiniGame' on 324/324. EXACT signature match to confirmed M44 ST51 settlement/WinMiniGame. No native payid -> SynthesizePayIdRule required (coordinator adds to configs/machine_round_win_rules.json; m44_minigame_settlement precedent, label_format=spin_type)."
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "ReSpin|MiniGame",
+    "opens": "WinRespin|WinMiniGame",
+    "note": "no round-level trigger pid; both features fire server-side (st50 win-gated free respin chaining on its own win; st51 minigame settlement). EXACT M44 archetype (ST1 + ST50 + ST51). Win-gating rule not in rawdata (parser_blind)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M54/mode_1"
+    },
+    "evidence": "T1 exact-archetype manifest-only onboard 2026-06-18. Provenance clean (_cache_version 3 REAL, single config bucket 45ef1448/e449b20f, 8 robots, chunk_0002.json). ST inventory {1:40000, 50:742, 51:324}. All three STs are VALIDATED STs whose field signatures EXACTLY match confirmed references: ST1->M44/M70 paid_spin/Normal (CostCredits=1000 PAID, ReMarks='', native payid); ST50->M42/M44 respin/WinRespin (CostCredits=0 FREE, ReMarks='ReSpin', native payid); ST51->M44 settlement/WinMiniGame (sparse signature, ReMarks='MiniGame', NO native payid). No new code: respin role + minigame_dynamics play-keying already wired in machine_spec (confirmed via M42/M44). Manifest base-excluded; base_hash 3ddaa183f38c unchanged.",
+    "caveats": [
+      "ST51 no native payid -> needs a config-only SynthesizePayIdRule (m54_minigame_settlement, spin_types=[51], label_format=spin_type), added by the coordinator to configs/machine_round_win_rules.json. Until then the report shows an EXPECTED _unattributed_st51 fallback bucket. status=needs_synth.",
+      "CurJackpotStoreWin present and =0 on 100% of st1/st50 rounds — the established fleet test-interface zeroing (MEMORY gate-8 ruling 2026-06-12), NOT a per-machine jackpot declaration.",
+      "GameplayTriggerType present and const 0 in mode 1. Parse-as-is; forward-compatible (in the st1/st50 signature).",
+      "Single config-md5 bucket 45ef1448/e449b20f (single chunk; no mixed-md5 pooling concern).",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until coordinator synth rule + report integrity GREEN + breaker + gate-7 render verify + user gate-8 sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every st1/st50 round but =0 on 100% of records. Established fleet-wide test-interface zeroing, declaration-confirmed (MEMORY gate-8 ruling + M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is in the st1/st50 signature so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). The reported RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

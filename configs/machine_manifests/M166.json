@@ -1,0 +1,191 @@
+{
+  "machine_id": "M166",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M166/mode_1 bucket bb46e453/c2aff679 2026-05-20 (chunk_0002.json, 40000 st1 rounds; CostCredits=BetAmount=1000 on 100%; ReMarks empty; GameplayTriggerType constant 0; sum(PayoutIdToWinAmount)==WinCredits on 100%). Signature mirrors validated ST1 paid_spin/Normal (ref M70.json/M137.json/M182.json)."
+    },
+    "126": {
+      "role": "freespin",
+      "play": "NewFreespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "ExtraRatio",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "ExtraRatio",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "ExtraRatio": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M166/mode_1 bucket bb46e453/c2aff679 2026-05-20 (749 st126 rounds; CostCredits=0 free; ReMarks 'Freespin N; ' 1..7; ExtraRatio constant 0; GameplayTriggerType constant 0; natural PayoutIdToWinAmount, sum==WinCredits on 100%). Signature mirrors validated ST126 freespin/NewFreespin (ref M182.json/M275.json).",
+      "trigger_paths": {
+        "discriminator": {
+          "kind": "round_field",
+          "field": "GameplayTriggerType",
+          "map": {
+            "0": "scatter"
+          },
+          "unmapped_value_policy": "surface_as_unknown_path"
+        },
+        "paths": {
+          "scatter": {
+            "opened_by": {
+              "payout_id": "666"
+            },
+            "label": "scatter-triggered freespin episode (7 free spins)"
+          }
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": "666",
+    "remarks": "Freespin",
+    "opens": "NewFreespin",
+    "note": "Freespin episode is opened from a base ST1 spin carrying PayoutId 666 (win=0 trigger node, ReMarks empty), immediately followed by ST126 'Freespin 1; ' ... 'Freespin 7; ' (107 episodes in chunk_0002, each exactly 7 free spins -> 749 st126 rounds). GameplayTriggerType is constant 0 on every st1 and st126 round -> a SINGLE freespin path (scatter); no second discriminator value observed in mode-1 data. ST126 is FREE (CostCredits=0) and self-settling (natural PayoutIdToWinAmount -> WinCredits)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M166/mode_1"
+    },
+    "evidence": "T1 exact-archetype onboarding (manifest-only, no new code). W1: chunk_0002.json, _cache_version 3 REAL, single config-md5 bucket bb46e453/c2aff679, 8 robots x 5000 spins = 40749 rounds. ST inventory = {1: 40000, 126: 749} ONLY (no wheel/minigame/topdollar/respin/hold_respin/collection STs present in mode-1 data despite the broad validated map). ST1 = paid_spin/Normal (CostCredits=BetAmount=1000 on 100%, ReMarks empty, GameplayTriggerType=0; signature match to validated ST1 ref M70/M137/M182). ST126 = freespin/NewFreespin (CostCredits=0 free, ReMarks 'Freespin 1..7; ', ExtraRatio=0, GameplayTriggerType=0; signature match to validated ST126 ref M182/M275). FeatureWin feature names = {Normal, NewFreespin} (server analysisResult). Win invariant sum(PayoutIdToWinAmount)==WinCredits holds on 40749/40749 rounds -> BOTH STs carry natural payid -> NO SynthesizePayIdRule needed -> zero fallback expected. Trigger = base ST1 pid 666 (win=0) opens 7-freespin episode (107/107 episodes). status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off.",
+    "caveats": [
+      "Single config-md5 bucket bb46e453/c2aff679 (single chunk chunk_0002.json; no mixed-md5 pooling concern). Note: chunk code_md5 c2aff679 / config_md5 bb46e453 — value-agnostic parse is unaffected; reports regenerate from the source-chunk md5 cell.",
+      "GameplayTriggerType present and constant 0 on all 40749 rounds (both STs) — single freespin discriminator value (scatter). Other modes may exercise non-zero values / additional STs and MUST get their own W1 + reuse pass before any reuse claim. Parse-as-is (constant 0); forward-compatible (in both signatures).",
+      "High-multiplier freespin tail under-sampled on the single ~40k-round chunk (107 episodes, 749 free spins). Reported tail rates/edges are DIRECTIONAL, not precise. NOT re-fetched (cache-only).",
+      "Modes other than 1 NOT analyzed (mode-1-only onboarding). Mode dirs (if any) were not opened."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every st1 and st126 round but =0 on 100% of 40749 records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is observed (forward-compatible: when the interface populates it the existing parser picks it up unchanged). Reported RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

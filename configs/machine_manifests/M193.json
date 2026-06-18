@@ -1,0 +1,193 @@
+{
+  "machine_id": "M193",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M193/mode_1 chunk_0002 (bucket 920914b5/b8541bc8, 2026-05-20; 40,000 ST1 rows). Signature byte-matches the validated ST1/paid_spin/Normal shape (ref M70.json/M137.json/M207.json)."
+    },
+    "117": {
+      "role": "freespin",
+      "play": "LockSymbolFreespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "LockSymbols",
+        "PrevLockSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockSymbols",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "PrevLockSymbols",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "LockSymbols": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "PrevLockSymbols": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M193/mode_1 chunk_0002 (4,053 ST117 rows; ST1 reel signature + LockSymbols/PrevLockSymbols). Signature byte-matches the validated ST117/freespin/LockSymbolFreespin shape (ref M207.json).",
+      "trigger_paths": {
+        "fallback": {
+          "kind": "trigger_anchor_walk",
+          "note": "single direct entry topology: every ST117 LockSymbolFreespin block (579/579 blocks) is opened DIRECTLY by a paid ST1 carrying payout_id 666 with WinCredits==0 (RewardLastNode '666-', ReMarks empty). There is NO ST2 wheel on this machine (unlike M207's indirect ST1->ST2->ST117 entry); the base->freespin transition is DIRECT, so freespin_dynamics.session_cadence.openers resolves natively from the ST1->ST117 transition. The anchor walk attributes all 579 sessions to the single freespin_grant path."
+        },
+        "paths": {
+          "freespin_grant": {
+            "opened_by": {
+              "payout_id": "666"
+            },
+            "label": "freespin trigger (pid 666)"
+          }
+        },
+        "multi_trigger_policy": "additive_sessions"
+      }
+    }
+  },
+  "trigger": {
+    "payout_id": "666",
+    "remarks": null,
+    "opens": "LockSymbolFreespin",
+    "note": "ST1 with PayoutIdToWinAmount {'666': 0} / RewardLastNode '666-' / WinCredits 0 is a win-0 marker (579/40,000 = 1.4475% of paid spins) that opens an ST117 LockSymbolFreespin block of exactly 7 free spins (ReMarks 'Freespin 1 of 7' .. 'Freespin 7 of 7'; block length 7 on 579/579 blocks). The grant is DIRECT (ST1 -> ST117; predecessor of every ST117 block is ST1, 579/579) — there is no intermediate wheel/settlement ST on this machine. ST1 ReMarks is empty on all 40,000 rounds; the trigger is detected from the pid-666 marker, not ReMarks. The generative reel rule that mints pid 666 is an observed OUTCOME marker (testspin-blind to the grid rule that produces it)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M193/mode_1"
+    },
+    "evidence": "W1 (this onboarding): 44,053 rounds, 1 real v3 chunk chunk_0002.json, single md5 bucket 920914b5/b8541bc8, _cache_version 3, _bet 1000. ST inventory = {1: 40,000, 117: 4,053} ONLY (exact 2-ST subset; NO ST2/ST36/ST50/ST51/ST126/ST14/ST15/ST13/ST160). ST1 = paid Normal (CostCredits=BetAmount=1000 on 100%, RewardLastNode->pid 1:1, natural PayoutIdToWinAmount), ST117 = LockSymbolFreespin freespin (CostCredits=0, BetAmount=1000 echo, LockSymbols/PrevLockSymbols present 100%, natural payid). Economy conservation: Sum(WinCredits) ST1 18,796,000 + ST117 12,989,000 = 31,785,000 == server analysisResult TotalWin 31,785,000 EXACT (no preview/double-count; ST117 cost 0 -> paid base = ST1 CostCredits only). FeatureWin keys = {Normal, LockSymbolFreespin} (confirm play names). Trigger topology: 579 ST1 pid-666 win-0 markers -> 579 direct ST117 blocks of 7 spins, 0 orphans, predecessor ST1 579/579. Both STs natural payid -> integrity expected to pass with ZERO synth/fallback. Field signatures byte-match the validated ST1 (ref M70/M137/M207) + ST117 (ref M207) shapes; same ST number verified by field-signature, not assumed.",
+    "caveats": [
+      "RARE arm UNDER-SAMPLED (single chunk, FLAGGED not fetched): freespin ST117 only 579 sessions (all length 7) -> per-FS-index ER ladder and length×win distributions are INDICATIVE not converged. Structure is correct; the rare-arm VALUES need scale (re-sample item, non-blocking for structural onboarding).",
+      "ReelSkin: ST1=1 (base) on all 40,000, ST117=11 (freespin premium skin) on all 4,053. A skin VOLATILITY dimension (skin-11 freespin board) is captured via the pooled freespin multiplier distribution; an explicit per-skin LABELED breakout is parser_blind (same per-ST-extraction boundary as M279/M207 skin-11), framework-team if wanted.",
+      "parser_blind (framework-team, NEVER fabricated): LockSymbols/PrevLockSymbols accumulation dimension (lock-count run-length / lock-set × multiplier / per-position win conditional on lock-count) needs a NEW per-ST lock-symbol accumulator; the freespin win × position-in-session arc. ST117 is fully PARSE-correct without them.",
+      "GameplayTriggerType is present and constant 0 on all 40,000 ST1 + 4,053 ST117 rows in mode 1. Present-but-constant; not a feature signal in this sample (known red herring). Parse-as-is; forward-compatible (in the ST1/ST117 signatures).",
+      "single config-md5 bucket 920914b5/b8541bc8 (single chunk chunk_0002.json; no mixed-md5 pooling concern). modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption (M43/M279/M275/M278/M207 cross-mode pattern). PROVENANCE: every NUMBER belongs to this bucket; structure claims are value-agnostic; any SERVED report must go through the md5-scoped generate path stamped with the chunk md5s.",
+      "RTP magnitude: Sum(WinCredits)/Sum(CostCredits) = 31,785,000 / 40,000,000 = 79.46% (paid base = ST1 CostCredits only; ST117 cost 0). FLAG: ST117 carries BetAmount=1000 at CostCredits=0 — an RTP denominator built from BetAmount (not CostCredits) would over-count the paid base; the paid unit is ST1's CostCredits (rtp_integrity.paid_st=[1]). RTP magnitude is not an onboarding criterion (parse-correctness is); per feedback_dev_ci_scope dev does not chase CI.",
+      "validation.status stays 'auto' until breaker + gate-7 render verify + user domain sign-off (gate 8)."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' present on every ST1/ST117 round but =0 on 100% of 44,053 in-sample records. The fleet-wide test-interface-zeroing pattern (gate-8 ruling + M70/M207/M275/M279/M278/M283 precedent): a real progressive jackpot store the current testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the ST1/ST117 signature, so parsing is FORWARD-COMPATIBLE — when the interface populates it, the parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

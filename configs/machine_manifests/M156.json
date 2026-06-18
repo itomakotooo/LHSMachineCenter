@@ -1,0 +1,171 @@
+{
+  "machine_id": "M156",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M156/mode_1 bucket 31c1051b/22049880 2026-05-20 (chunk_0002.json, _cache_version 3 REAL; ST1 count 40000, CostCredits=BetAmount=1000 on 100%, ReMarks empty on 100%, GameplayTriggerType constant 0, PayoutIdToWinAmount sums to WinCredits on 4047/4047 wins, 0 mismatches). field_presence is key-existence (1.0); PayoutByPayline/PayoutIdToWinAmount carry non-empty dicts only on win rounds (4047/40000)."
+    },
+    "50": {
+      "role": "respin",
+      "play": "WinRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M156/mode_1 bucket 31c1051b/22049880 2026-05-20 (chunk_0002.json, _cache_version 3 REAL; ST50 count 543, CostCredits=0 on 100% (FREE), BetAmount=1000, ReMarks='ReSpin' on 100%, follows ST1 (220) or ST50 (323) -> a free respin chain extending a paid spin; PayoutIdToWinAmount sums to WinCredits on 53/53 wins, 0 mismatches). field_presence is key-existence; PayoutByPayline non-empty only on win rounds (53/543)."
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "ReSpin",
+    "opens": "WinRespin",
+    "note": "no round-level trigger pid; the respin (ST50, ReMarks='ReSpin', CostCredits=0) fires server-side after a base spin and chains on itself (323/543 ST50 rounds follow another ST50). Win-gating rule not in rawdata (parser_blind). Same archetype as confirmed M42/M43 WinRespin."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M156/mode_1"
+    },
+    "evidence": "Onboarded as EXACT-ARCHETYPE of confirmed M42 (and M43 minus ST51): mode 1 emits ONLY ST1 (paid_spin/Normal) + ST50 (respin/WinRespin). ST1 signature matches M70/M137/M42 paid-reel-spin shape; ST50 signature matches M42/M43 WinRespin shape (CostCredits=0 free respin, ReMarks='ReSpin'). Both STs carry NATURAL numeric payid (PayoutIdToWinAmount sums exactly to WinCredits on every win, 0 mismatches across 40000 ST1 + 543 ST50 rounds) -> NO SynthesizePayIdRule. STRICT-REUSE of CROSS_CUTTING + PER_SPINTYPE plugins for ST1 and respin_dynamics (role 'respin', already wired in machine_spec) for ST50; no NEW plugin, no machine_spec change, no fork. base_hash 3ddaa183f38c unchanged.",
+    "caveats": [
+      "Brief listed a large catalog of possible validated STs (ST35/140/2/36/51/126/117/14/15/13/160) — M156 mode 1 emits NONE of those. Only ST1 + ST50 are present in the data. Onboarded exactly what the rawdata emits; the catalog STs (wheel ST2 synth, freespin trigger_paths, topdollar ST14/15, etc.) do NOT apply to this machine.",
+      "CurJackpotStoreWin present and =0 on 100% of all 40543 rounds — the known fleet test-interface zeroing behavior (recorded confirmed in MEMORY 2026-06-12), NOT a per-machine jackpot declaration.",
+      "GameplayTriggerType present and constant 0 on all rounds in mode 1 (this machine emits it; non-zero meaning undetermined from mode-1 data). Parse-as-is; forward-compatible (in both ST signatures).",
+      "respin burst-length histogram + win-gating proof require per-round ReMarks run-length accumulation the base-closure parser does not expose (inherited M42/M43 ANALYZER DATA BOUNDARY / parser_blind). respin_dynamics computes every metric the frozen accumulators expose; the blind sub-metrics are flagged in its parser_blind field. Framework-team work, not an M156 reuse failure.",
+      "Single config-md5 bucket 31c1051b/22049880 (single chunk chunk_0002.json, 8 robots, 40543 rounds; no mixed-md5 pooling concern).",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every round but =0 on 100% of 40543 records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283/M42/M70 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in both ST signatures so parsing is FORWARD-COMPATIBLE. RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  },
+  "round_win_rule": null
+}

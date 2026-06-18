@@ -1,0 +1,75 @@
+{
+  "machine_id": "M227",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_field_presence": {"AccCredits": 1.0, "BetAmount": 1.0, "CollectCount": 1.0, "CostCredits": 1.0, "CreditsSymbols": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "SymbolIndexToRewards": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M227/mode_1 (chunk_0001+chunk_0002, _cache_version 3 REAL; 80,000 ST140 rows, all 22 fields 100% present). EXACT signature match to M283/M277/M186/M153 ST140 (validated paid_spin/NormalCollectionSpin)."
+    },
+    "13": {
+      "role": "hold_respin",
+      "play": "LockReSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "LockLines", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "LockLines", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "LockLines": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M227/mode_1 (chunk_0001+chunk_0002, _cache_version 3 REAL; 928 ST13 rows, all 19 fields 100% present). EXACT signature match to M277 ST13 (validated hold_respin/LockReSpin). CostCredits=0 on 928/928 (free held-and-respin). Natural pid: sum(PayoutIdToWinAmount)==WinCredits on 928/928 (575 win==0 rounds + 353 win-bearing); NO SynthesizePayIdRule (same as M277). Burst trigger = ReMarks 'TriggerRespin' on the opening paid ST140 (348/353 bursts; remaining 5 open off a wheel ST2 round) — a SINGLE uniform trigger path, NOT M277's 2-path pid-777/collect-peak split; GameplayTriggerType=0 everywhere (not a discriminator). Single exhaustive path -> NO trigger_paths dimension."
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M227/mode_1 (chunk_0001+chunk_0002, _cache_version 3 REAL; 651 ST2 rows, all 8 fields 100% present). EXACT signature match to M283/M207 ST2 (validated settlement/Wheel). NO native PayoutIdToWinAmount (0/651) -> NEEDS a config-only SynthesizePayIdRule (coordinator). WinCredits>0 on 651/651. Wheel fires deterministically at the collect-metronome peak CollectCount==200 on the opening ST140 (651/651) — single exhaustive collect-peak path -> NO trigger_paths dimension (same as M283).",
+      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 15, "prize_basis": "win_over_bet"}
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "TriggerRespin / WheelSpin",
+    "opens": "LockReSpin / Wheel",
+    "note": "Two granted events off the paid base ST140: (1) ST13 LockReSpin (CostCredits=0, held-and-respin) opened by ReMarks 'TriggerRespin' on the opening paid ST140 (348/353 bursts; 5 open off an intervening wheel ST2) — a SINGLE uniform trigger (NOT M277's 2-path pid-777/collect-peak); GameplayTriggerType=0 on every round (not a discriminator). (2) ST2 Wheel (the collect settlement) fired deterministically at the CollectCount metronome peak (cc==200 on the opening ST140, 651/651), NOT a payid scatter — single exhaustive collect-peak path. M227 archetype = M283 (ST140 + ST2 wheel) PLUS M277 ST13 hold_respin. NO trigger_paths dimension on either granted ST (each has a single exhaustive entry path)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M227/mode_1"},
+    "evidence": "st_inventory + parse_rounds on M227/mode_1 (chunk_0001+chunk_0002, _cache_version 3 REAL, bet=1000; 81,579 rounds scanned, 80,000 ST140 + 928 ST13 + 651 ST2). Field signatures EXACT-MATCH the validated references: ST140==M283/M277/M186/M153 (22 fields, paid_spin/NormalCollectionSpin, CostCredits=1000 on 80,000/80,000); ST13==M277 (19 fields, hold_respin/LockReSpin, CostCredits=0 on 928/928, natural pid sum==WinCredits on 928/928); ST2==M283 (8 fields, settlement/Wheel, NO native pid on 651/651, WinCredits>0 on 651/651). Wiring is pre-committed (manifest-only): hold_respin in KNOWN_ROLES/FREESPIN_FAMILY_ROLES with ROLE_ANALYSES['hold_respin']=('freespin_dynamics',); Wheel play -> PLAY_ANALYSES['Wheel']=('wheel_dynamics',). NO machine_spec.py edit, NO new plugin, NO closure change. base_hash 3ddaa183f38c unchanged before/after (manifest is base-excluded). ST2 wheel cell map data-derived via wheel_cells st_extract: all 15 cells observed (cell_count=15). ATTRIBUTION: ST2 has no native pid -> a config-only SynthesizePayIdRule (m227_wheel_settlement, coordinator-added) zeros the expected _unattributed_st2 fallback bucket. NOT user-signed-off (validation.status='auto').",
+    "caveats": [
+      "T1 manifest-only onboard (EXACT-ARCHETYPE: M283 ST140+ST2-wheel + M277 ST13 hold_respin). STRICT-REUSE of the shared paid_spin spine + freespin_dynamics (hold_respin role hook) + wheel_dynamics (Wheel play hook) + the wheel_cells st_extract. NO new code, NO fork, NO closure change.",
+      "ST13 trigger differs from M277: M227 opens LockReSpin via a single uniform ReMarks 'TriggerRespin' marker on the opening paid ST140 (NOT M277's 2-path pid-777-random / collect-peak split). ReelSkin constant 5 on all 928 ST13 (vs M277's distinct skin 11). Single exhaustive path -> NO trigger_paths dimension. Signature still EXACT-matches M277 ST13 (same 19 fields), so role/play/signature reuse holds; only the M277-specific trigger_paths anchor-walk block is correctly omitted (M227 data does not support it).",
+      "ST2 wheel has 15 cells (cell_count=15, all observed) vs M283/M279 12 cells — DATA-DERIVED per machine via wheel_cells st_extract; no machine-specific constant. Wheel fires at collect-metronome peak CollectCount==200 (vs M283 cc==1000) — a per-machine metronome constant, not a signature difference.",
+      "CurJackpotStoreWin present on every ST140/ST13 round but =0 on 100% (established fleet test-interface zeroing; see out_of_engine_mechanics). ST2 does not carry the field (not in its signature). RTP excludes the progressive.",
+      "GameplayTriggerType present and constant 0 on all ST140/ST13 rounds in mode 1 (non-zero meaning undetermined from mode-1 data). Parse-as-is (constant 0); forward-compatible (in both signatures).",
+      "Collect-mechanic fields (CollectCount, AccCredits) drive the wheel/respin metronome (cc 1..200 cyclic, wheel at peak). collect_mechanic cross-cutting plugin may auto-fire with the fleet-wide cosmetic imprecision (completed_cycles count / clamp_warning) documented on M275/M279/M283/M277 — RTP-INERT (estimated_correction_pp 0.0); framework-team precision item, NOT M227-specific, NOT patched here.",
+      "Two chunks scanned (chunk_0001 + chunk_0002), same config-md5 bucket; no mixed-md5 pooling concern.",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs were not opened; extend on data, never by assumption. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' present on every ST140/ST13 round but =0 on 100% of in-sample records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283/M277 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in both ST signatures so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). RTP excludes the progressive; it adds on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [140],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

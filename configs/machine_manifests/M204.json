@@ -1,0 +1,52 @@
+{
+  "machine_id": "M204",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M204/mode_1 bucket d6a23e85/e54bbff5 2026-06-18 (80,000 ST1; field signature identical to M70.json st1 / M137 Normal paid-spin reference)"
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M204/mode_1 bucket d6a23e85/e54bbff5 2026-06-18 (872 ST2; field signature byte-identical to M283.json / M279.json / M207 ST2 Wheel settlement, 8-field set)",
+      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 20, "prize_basis": "win_over_bet"}
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "WheelSpin",
+    "opens": "Wheel",
+    "note": "no round-level trigger pid. Wheel (ST2) is the settlement of a wheel feature triggered from the paid spin (ST1 ReMarks ' Trigger Wheel' on 790/80,000 rounds); the wheel itself emits 872 ST2 rounds (a triggered wheel may chain across WheelId tiers). SINGLE entry path (WheelSpin, no per-path discriminator) -> NO trigger_paths dimension. M204 = M283 minus the CollectCount metronome (no ST140 collect, no AccCredits/CollectCount); the paid spin is the M70-shape Normal ST1, the wheel is the M283/M279-shape ST2 settlement."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M204/mode_1"},
+    "evidence": "T1 EXACT-ARCHETYPE manifest-only onboard (fleet batch). PROVENANCE: _cache_version 3 REAL on both chunks (chunk_0001/chunk_0002), single config-md5 bucket d6a23e85/e54bbff5, bet 1000. ST inventory (extract_st_inventory M204/mode_1): ONLY ST1 (80,000) + ST2 (872) fire — the multi-ST validated map in the brief is a SUPERSET of candidate STs; this machine emits 2 of them, derived from its OWN data (cardinal rule 1, not force-fit). ST1 signature byte-identical to M70 st1 (paid Normal: CostCredits=BetAmount=1000 on 100%, native PayoutIdToWinAmount sums to WinCredits 80,000/80,000 mismatch=0 -> NO synth rule; CurJackpotStoreWin=0 / GameplayTriggerType=0 constant). ST2 signature byte-identical to M283/M279 ST2 (settlement/Wheel, 8-field set, NO PayoutIdToWinAmount -> NO native payid -> NEEDS SynthesizePayIdRule, coordinator-added). Both roles in KNOWN_ROLES (paid_spin, settlement); play Wheel already wires wheel_dynamics via PLAY_ANALYSES (M279/M283 precedent) -> NO machine_spec wiring change, NO new plugin. base_hash 3ddaa183f38c unchanged before/after (manifest base-excluded).",
+    "caveats": [
+      "ST2 is a MULTI-TIER wheel: ReMarks carry 'WheelSpin CellIndex <n>; WheelId <w>;' with WheelId in {1,2,3} (790/77/5 rounds) and CellIndex up to 20. The (WheelId, CellIndex) -> WinCredits mapping is FULLY DETERMINISTIC (no nondeterminism per tier), but the shared wheel_cells st_extract extractor keys on CellIndex ALONE (collapsing WheelId), so cells paid by >1 tier at different prizes (cells 1,5,6,7,8,9,11) will be flagged in nondeterministic_cells with prize_multiplier null. This is the extractor's HONEST data-alarm behavior (never crash, never silently pick), NOT a parse error and NOT a regression -> the cell-level un-merge per WheelId is parser_blind (needs a per-(WheelId,cell) accumulator that does not yet exist). DOES NOT affect parse correctness or the rtp_integrity gate (ST2 win attributes via the SynthesizePayIdRule, not via cell determinism). cell_count declared 20 = max observed CellIndex. NEW domain pattern: a tiered wheel (WheelId dimension) on the M279/M283 ST2 archetype. Framework-team item for a per-tier wheel un-merge.",
+      "ST1 'Trigger Wheel' (790 rounds) < ST2 (872 rounds): a single wheel trigger can chain across WheelId tiers within one settlement, so ST2 count exceeds the trigger count. Consistent with the multi-tier wheel; not a missing-trigger artifact.",
+      "GameplayTriggerType present and constant 0 on all 80,000 ST1 in mode 1 (not in the analyzer baseline field set; this machine emits it). Non-zero meaning undetermined from mode-1 data. Parse-as-is (constant 0); forward-compatible (in the st1 observed_fields, not in the core signature).",
+      "single config-md5 bucket d6a23e85/e54bbff5 (no mixed-md5 pooling concern).",
+      "Modes other than 1 NOT analyzed (mode-1-only onboard). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1 round but =0 on 100% of 80,000 in-sample records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in the ST1 observed_fields so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). The data RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}
