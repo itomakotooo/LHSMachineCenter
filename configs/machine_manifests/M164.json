@@ -133,8 +133,8 @@
     "note": "Base game (st1, CostCredits=1000) + a FREE (CostCredits=0) WinRespin (st50, ReMarks='ReSpin', BetAmount=1000 echo). No round-level trigger pid; respin fires server-side. Win-gating rule not in rawdata (parser_blind). NO trigger_paths dimension (no per-round discriminator field)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M164/mode_1"
@@ -147,7 +147,9 @@
       "respin win-gating proof + respin burst-length histogram require per-round ReMarks run-length accumulation not in the base-closure parser (inherited PARSER-BLIND boundary from M43/M42; respin_dynamics computes every metric the frozen accumulators expose). Framework-team work, not an M164 reuse failure.",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Other modes may exercise additional STs / non-zero GameplayTriggerType and MUST get their own W1 + reuse pass before any reuse claim."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

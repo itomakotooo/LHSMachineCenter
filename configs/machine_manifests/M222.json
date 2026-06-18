@@ -158,8 +158,8 @@
     "note": "ST1 pid 1701 (RewardLastNode '1701-') is a win-0 trigger marker that DIRECTLY opens an ST117 LockSymbolFreespin block of 10 spins (164/164 blocks in-sample are immediately preceded by an ST1 carrying pid 1701; 164 sessions x 10 spins = 1,640 ST117 rows; every block length 10). DIRECT base->freespin topology (ST1->ST117), distinct from M207's INDIRECT wheel route (ST1->ST2->ST117): M222 has NO ST2 wheel. pid 1701 usually pays 0 (a pure marker) but on 14/164 openers co-occurs with a real symbol win (pids 8 or 7). The generative reel rule that mints pid 1701 is an observed OUTCOME marker, not derivable from the testspin grid alone. ST117 carries LockSymbols/PrevLockSymbols (the held-symbol board state) and a natural PayoutId space (sum(PayoutIdToWinAmount)==WinCredits on 1,133/1,133 winning rounds)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M222/mode_1"
@@ -173,7 +173,9 @@
       "single config-md5 bucket 98eceb19/0eba6820 (single chunk chunk_0002; no mixed-md5 pooling concern). modes: [1] only -- the only mode with cached rawdata. Extend on data, never by assumption (M43/M279/M275 cross-mode pattern). PROVENANCE: every NUMBER belongs to this bucket; structure claims are value-agnostic; any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s.",
       "validation.status stays 'auto' pending W5 breaker + gate-7 render verify + user gate-8 domain sign-off (T1 batch). A same-archetype match to confirmed M70/M207 is NOT sufficient for 'confirmed'."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

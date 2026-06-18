@@ -198,7 +198,7 @@
     "note": "Episode flow observed in mode 1: ST1 (paid reel) carries trigger pid 7773 (pays 0 on all 272 occurrences, a bonus marker) -> ST2 (Wheel settlement, ReMarks='WheelSpin CellIndex N', WinCredits=0 on 100% in this sample) -> ST106 (MultiplierFreespin, ReMarks='FreeSpin 1..N', free cost=0). 272 episode openers (pid 7773) == 272 ST2 wheel rounds == 272 'FreeSpin 1' episode starts (EXACT). GameplayTriggerType uniformly 0 on all STs (single scatter trigger context). NO CollectCount/SymbolIndexToRewards field on this machine -> NOT a live collect channel; the M275-style 'collect_peak' second path is structurally absent. T2: STs use STANDARD fields, no novel mechanic field."
   },
   "validation": {
-    "status": "auto",
+    "status": "confirmed",
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M60/mode_1"
@@ -213,7 +213,10 @@
       "SESSION-DIM CONSERVATION (framework-layer, NOT a manifest defect): smoke report shows session_conservation diff 41.59% (session_win_sum 19,763,250 vs total_win 33,836,250) -- the freespin episode wins land at ROUND level (ST106 carries its own PayoutIdToWinAmount on every winning round, so _round_has_credited_win correctly EXCLUDES them from the trigger session to avoid double-count), and the trigger ST1 round carries ReMarks='Trigger' which trigger_sessions.py classifies as Type-1 'last_non_none' (TopDollar-selector semantics) rather than Type-2 'sum_all' (freespin-sum semantics). This is the KNOWN fleet-wide Type-2 session-dim caveat (MEMORY b8826c5: 'Type-2 付费回合口径丢 ~45.8% 赢额 + conservation 告警'). It does NOT affect the acceptance gate: rtp_integrity_check.passed=TRUE (L1 sum(payid)==our_total, L2 NO fallback bucket, L3 anchors), our_total_win 33,836,250 == server FeatureWin Normal+MultiplierFreespin EXACT, no double-count. The fix lives in trigger_sessions.py/parser.py (CLOSURE files -- framework-team), NOT in the 5 onboarding artifacts. Contrast M165 (freespin trigger ReMarks='' -> Type-2 sum_all -> conservation OK) vs M279 (wheel/respin share SpinTimes -> folded -> conservation OK). Flagged for the framework team; NOT an onboarding blocker (no _unattributed bucket, no live-collect channel).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "user_signed_off": true,
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

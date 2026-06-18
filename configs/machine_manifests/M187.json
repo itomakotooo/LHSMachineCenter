@@ -1,27 +1,112 @@
 {
   "machine_id": "M187",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M187/mode_1 bucket 3a83bf5f/7ded82da 2026-05-20 (80,000 ST1 rounds; signature EXACT match to validated ST1 paid_spin/Normal ref M70.json/M137.json)"
     },
     "2": {
       "role": "settlement",
       "play": "Wheel",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "StopSymbolsByCol",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M187/mode_1 bucket 3a83bf5f/7ded82da 2026-05-20 (1,499 ST2 rounds; signature EXACT match to validated ST2 settlement/Wheel ref M283.json/M207.json)",
-      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 22, "prize_basis": "win_over_bet"}
+      "wheel_cells": {
+        "spin_type": 2,
+        "remarks_field": "ReMarks",
+        "cell_pattern": "CellIndex\\s+(\\d+)",
+        "cell_count": 22,
+        "prize_basis": "win_over_bet"
+      }
     }
   },
   "trigger": {
@@ -31,9 +116,12 @@
     "note": "No round-level trigger pid. Wheel (ST2) is the settlement feature; the triggering ST1 round carries ReMarks 'Trigger Wheel' (1,499/80,000) and the Wheel settles via ST2 (ReMarks 'WheelSpin CellIndex <n>', 1,499 rounds, 1:1 with the ST1 triggers). SINGLE entry path (WheelSpin only; no discriminator across 1,499/1,499) -> NO trigger_paths dimension. EXACT-ARCHETYPE match to M283/M207 (ST1 Normal + ST2 Wheel settlement); cell_count 22 (CellIndex 1-22, all observed, contiguous; M207 19-cell / M283 12-cell precedent for non-12 wheels)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M187/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M187/mode_1"
+    },
     "evidence": "W1 (data-derived, 81,499 rounds across chunk_0001/0002, _cache_version 3 REAL, single config-md5 bucket 3a83bf5f/7ded82da, _bet 1000): SpinType tally {1:80000, 2:1499}. ST1 = paid_spin/Normal (CostCredits==BetAmount==1000 on 100%; signature EXACT match to validated ST1 ref M70.json/M137.json; CurJackpotStoreWin constant 0; GameplayTriggerType constant 0). ST2 = settlement/Wheel (signature EXACT match to validated ST2 ref M283.json/M207.json; ReMarks 'WheelSpin CellIndex <n>' on 1,499/1,499, NO_MATCH=0; CellIndex 1-22, 22 distinct cells all observed). Wheel cells are non-deterministic per cell (each cell carries a small prize-multiplier band, e.g. Cell 13 -> {50,100,200}x, Cell 20 -> {500,1000,2000,4000}x) -> the wheel_cells st_extract extractor records the data-derived per-cell map honestly (nondeterministic cells flagged, never collapsed). ATTRIBUTION (DIVERGES from the M283/M279 orphan-wheel reference): the ST1 'Trigger Wheel' round (1,499/80,000) carries an explicit native PayoutId 666 (the wheel trigger anchor, pays 0 on the ST1 round, M15-style), and the framework's trigger-session settlement reconstruction binds the ST2 wheel win back to pid 666. Verified end-to-end: pid 666 attributed total_win == 45,234,000 == the raw ST2 wheel win sum EXACTLY; rtp_integrity L1 holds (sum(payid)==our_total 73,962,000); L2 shows ZERO fallback (no _unattributed_st2); rtp_integrity_check.passed==True. So ST2 is NATIVELY attributed via the pid-666 trigger anchor -> NO SynthesizePayIdRule needed (round_win_rule:null), UNLIKE M283/M279 whose wheel had no per-round trigger pid and required a synth rule. ST2 settles the wheel separately (its own economy/win_field, bound to the trigger session via pid 666, no double-count). EXACT-ARCHETYPE T1 batch: manifest-only, NO new code (roles paid_spin/settlement already in KNOWN_ROLES; play 'Wheel' already wired to wheel_dynamics in PLAY_ANALYSES; ST1 strict-reuses CROSS_CUTTING+PER_SPINTYPE). validation.status stays 'auto' pending gate-7 render verify + gate-8 user domain sign-off.",
     "caveats": [
       "ST2 win is NATIVELY attributed (no synth rule): the ST1 'Trigger Wheel' round carries native PayoutId 666 (pays 0 on ST1, M15-style trigger anchor) and the trigger-session reconstruction binds the ST2 wheel win to pid 666 (verified: pid 666 total_win 45,234,000 == raw ST2 win EXACTLY; rtp_integrity passed, ZERO fallback, _unattributed_st2 ABSENT). This DIVERGES from the M283/M279 reference where the wheel had NO per-round trigger pid and required a config-only SynthesizePayIdRule. round_win_rule:null is correct for M187. status=onboarded_clean.",
@@ -43,7 +131,9 @@
       "CurJackpotStoreWin present and constant 0 on all 80,000 ST1 rounds (established fleet test-interface-zeroing pattern; see out_of_engine_mechanics).",
       "Modes other than 1 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until gate-7 render verify + gate-8 user domain sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {
@@ -56,5 +146,11 @@
     }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

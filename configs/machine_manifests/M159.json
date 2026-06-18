@@ -133,8 +133,8 @@
     "note": "no round-level trigger pid; the respin fires server-side after a base WIN and chains on its own win (ReMarks='ReSpin', 407 st50 rounds vs 40000 st1). Win-gating rule (which winning configs open a respin) not in rawdata (parser_blind, inherited from M42/M43). No trigger_paths dimension (no per-ST discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M159/mode_1"
@@ -148,7 +148,8 @@
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs may exercise other STs and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
     "date": "2026-06-18",
-    "gate8_note": "PENDING user gate-8 domain sign-off (fleet T1 batch). Objective gates 1-6 verified by implementer; gate-7 render verify + user sign-off owned by coordinator."
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held.",
+    "signed_off_date": "2026-06-18"
   },
   "out_of_engine_mechanics": [
     {

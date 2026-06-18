@@ -123,8 +123,8 @@
   ],
   "round_win_rule": null,
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M48/mode_1"
@@ -137,7 +137,9 @@
       "Single config-md5 bucket 06f0cdb0/9d56f135 (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
       "Modes other than 1 NOT analyzed (mode-1-only onboarding). If M48 has other modes they MUST get their own W1 + reuse pass before any reuse claim."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "rtp_integrity": {
     "paid_st": [

@@ -1,42 +1,218 @@
 {
   "machine_id": "M256",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "140": {
       "role": "paid_spin",
       "play": "NormalCollectionSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
-      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
-      "observed_field_presence": {"AccCredits": 1.0, "BetAmount": 1.0, "CollectCount": 1.0, "CostCredits": 1.0, "CreditsSymbols": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "SymbolIndexToRewards": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "CollectCount",
+        "AccCredits",
+        "CreditsSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "AccCredits",
+        "BetAmount",
+        "CollectCount",
+        "CostCredits",
+        "CreditsSymbols",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "SymbolIndexToRewards",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "AccCredits": 1.0,
+        "BetAmount": 1.0,
+        "CollectCount": 1.0,
+        "CostCredits": 1.0,
+        "CreditsSymbols": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "SymbolIndexToRewards": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M256/mode_1 bucket 2a7abe04/d8bd751a 2026-06-18"
     },
     "36": {
       "role": "respin",
       "play": "MoveSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M256/mode_1 bucket 2a7abe04/d8bd751a 2026-06-18"
     },
     "126": {
       "role": "freespin",
       "play": "NewFreespin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "ExtraRatio": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "ExtraRatio",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "ExtraRatio",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "ExtraRatio": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M256/mode_1 bucket 2a7abe04/d8bd751a 2026-06-18"
     }
   },
-  "trigger": {"payout_id": "666", "remarks": "Freespin", "opens": "NewFreespin", "note": "ST126 NewFreespin is the granted feature. MULTI-PATH entry observed in mode-1 (NOT a single exhaustive path -> NO trigger_paths block in this manifest-only T1 onboard; multi-path discriminator dimension is W3/parser-blind territory, deferred): (a) scatter pid 666 on a paid ST140 (220 obs); (b) collect-peak CollectCount==1000 deterministic pity timer on ST140 (40 obs) -- the M275 scatter-vs-collect-peak split; (c) entered from a ST36 MoveSpin nudge run (710 obs, the dominant path on this machine). ST36 MoveSpin (cost=0 wild-nudge re-spin, ReMarks='move', natural payid) precedes most freespin runs and interleaves with them (ST140 -> [ST36 move...] -> ST126 freespin run). NOTE: M275's ST126 GameplayTriggerType discriminator (0=scatter,2=collect_peak) is present but CONSTANT 0 on all M256 mode-1 records -> uninformative here; do not rely on it for path split. All three STs carry natural payid -> integrity passes with zero fallback (onboarded_clean)."},
+  "trigger": {
+    "payout_id": "666",
+    "remarks": "Freespin",
+    "opens": "NewFreespin",
+    "note": "ST126 NewFreespin is the granted feature. MULTI-PATH entry observed in mode-1 (NOT a single exhaustive path -> NO trigger_paths block in this manifest-only T1 onboard; multi-path discriminator dimension is W3/parser-blind territory, deferred): (a) scatter pid 666 on a paid ST140 (220 obs); (b) collect-peak CollectCount==1000 deterministic pity timer on ST140 (40 obs) -- the M275 scatter-vs-collect-peak split; (c) entered from a ST36 MoveSpin nudge run (710 obs, the dominant path on this machine). ST36 MoveSpin (cost=0 wild-nudge re-spin, ReMarks='move', natural payid) precedes most freespin runs and interleaves with them (ST140 -> [ST36 move...] -> ST126 freespin run). NOTE: M275's ST126 GameplayTriggerType discriminator (0=scatter,2=collect_peak) is present but CONSTANT 0 on all M256 mode-1 records -> uninformative here; do not rely on it for path split. All three STs carry natural payid -> integrity passes with zero fallback (onboarded_clean)."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M256/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M256/mode_1"
+    },
     "evidence": "T1 EXACT-ARCHETYPE manifest-only onboard (NO new code; every ST is a VALIDATED ST with an existing parser). W1 (43,397 rounds in chunk_0002, _cache_version:3 real, _bet 1000, single config-md5 bucket 2a7abe04/d8bd751a): emits exactly 3 SpinTypes -- ST140 (40,000), ST126 (2,600), ST36 (797). ST140 NormalCollectionSpin = the PAID base reel spin (CostCredits=1000 on 40,000/40,000; CollectCount metronome 1..1000; signature == M153/M283 ST140; natural payid present). ST36 MoveSpin = FREE cost=0 wild-nudge re-spin (CostCredits=0/797, ReMarks='move'; signature == M149/M279 ST36; natural payid 611/797 nonzero). ST126 NewFreespin = FREE cost=0 granted freespin (CostCredits=0/2600, ReMarks='Freespin N', ExtraRatio present; signature == M182/M275 ST126; natural payid 619/2600 nonzero). Field-signature audit: every ST's observed fields are a SUBSET of the validated reference union (M140<-{M186,M153,M283}; M36<-{M149,M279}; M126<-{M182,M275}) -- ZERO field outside the references' observed sets, ZERO missing core field -> NO ABORT, every ST strict-mirrors a validated role. No no-payid settlement ST (ST2/ST15/ST51 ABSENT) -> NO SynthesizePayIdRule needed.",
     "caveats": [
       "ST126 freespin has MULTIPLE entry paths in mode-1 (scatter pid 666 / collect-peak CollectCount==1000 / ST36 MoveSpin run). NO single-path trigger_paths block written (data does not support a single exhaustive path; a multi-path discriminator dimension is W3 design / parser-blind, out of scope for this manifest-only T1 onboard). Trigger note records the observed paths.",
@@ -44,11 +220,26 @@
       "single config-md5 bucket 2a7abe04/d8bd751a (first/only sample; no mixed-md5 pooling concern).",
       "Only ST140 + ST36 + ST126 fire in mode-1 (no ST2 Wheel, no minigame, no TopDollar). collect_mechanic completed_cycles cosmetic undercount is fleet-wide on every 1000-spin-BCM machine (M275/M279/M283 precedent), NOT M256-specific; estimated_correction_pp is the RTP-bearing output. validation.status stays 'auto' until coordinator gate-8 user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every round of every ST but =0 on 100% of in-sample records. Fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M275 sign-off -- a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in each ST signature's observed_fields so parsing is FORWARD-COMPATIBLE (when the interface populates it, the existing parser picks it up unchanged). The reported RTP excludes the progressive; it adds on top once the interface enables it. NOT a per-machine investigation -- fleet pattern, one-time recorded.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every round of every ST but =0 on 100% of in-sample records. Fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M275 sign-off -- a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in each ST signature's observed_fields so parsing is FORWARD-COMPATIBLE (when the interface populates it, the existing parser picks it up unchanged). The reported RTP excludes the progressive; it adds on top once the interface enables it. NOT a per-machine investigation -- fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      140
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

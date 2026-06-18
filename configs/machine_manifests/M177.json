@@ -133,8 +133,8 @@
     "note": "no round-level trigger pid; the WinRespin (ST50) is a FREE cost=0 reel spin (ReMarks='ReSpin' on 4,944/4,944, BetAmount=1000 echo, CurJackpotStoreWin=0) extending a base ST1 win, server-side. Win-gating rule not in rawdata (parser_blind). No trigger_paths dimension (single discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M177/mode_1"
@@ -147,7 +147,9 @@
       "Single config-md5 bucket b006f155/2245c360 (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding; no other mode dirs cached). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

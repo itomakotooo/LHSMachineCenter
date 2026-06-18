@@ -136,8 +136,8 @@
     "note": "Scatter-triggered free-spin feature. The episode-opening ST1 carries a win=0 trigger node on payout_id 666 (256/336 openers) OR 667 (80/336 openers); pids 666/667 appear ONLY on episode openers (0 on the other 39,664 ST1 rounds) and pay 0 credits -> they are the bonus-trigger nodes (256+667 80 = 336 = total episode openers). The opener is immediately followed by ST126 (NewFreespin). Base episode length = 4 free spins; re-triggers ('AddFreespins' in ReMarks) extend to 8/12/16/20/24/32/40 (observed dist 4:241, 8:67, 12:5, 16:15, 20:5, 24:1, 32:1, 40:1). ExtraRatio constant 0 in this sample (free-spin global multiplier, parse-as-is, forward-compatible). NO per-ST trigger_paths discriminator declared: GameplayTriggerType is constant 0 (no discriminator field), and the trigger has TWO opener pids (666/667), so a single-path trigger_paths block (the M182 pattern, single pid 1701) does NOT faithfully represent this machine's data -> omitted per the 'single-path only if the data supports it' rule. ST126 win attributes via its NATURAL PayoutIdToWinAmount (no SynthesizePayIdRule needed)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "date": "2026-06-18",
     "evidence": "Onboarded as a fleet T1 EXACT-ARCHETYPE manifest-only machine (no new code). W1 provenance: rawdata/M202/mode_1/chunk_0002.json, _cache_version 3 REAL, single config-md5 bucket bace5164/c2aff679, _bet 1000, 8 robots, 41,996 rounds. ST inventory = {1: 40000, 126: 1996} only (NO ST2/ST13/ST14/ST15/ST35/ST36/ST50/ST51/ST117/ST140/ST160). Signature confirmation: ST1 observed_fields set is BYTE-IDENTICAL to M70/M182 ST1 (paid_spin/Normal); ST126 observed_fields set is BYTE-IDENTICAL to M182 ST126 (freespin/NewFreespin, the ExtraRatio-bearing freespin). Economy verified from THIS machine's data: ST1 CostCredits=BetAmount=1000 on 40000/40000 (the only paid ST); ST126 CostCredits=0 on 1996/1996 (FREE bonus spins, BetAmount=1000 echo). Both STs carry a NATURAL PayoutIdToWinAmount -> NO settlement-with-no-payid ST present -> NO SynthesizePayIdRule needed. CurJackpotStoreWin=0 on 100% (fleet test-interface-zeroed). Wiring: paid_spin + freespin/NewFreespin roles already in KNOWN_ROLES + ROLE_ANALYSES (M182 precedent) -> NO machine_spec change, NO new plugin (freespin_dynamics strict-reused), NO new frontend dimension. base_hash 3ddaa183f38c unchanged (manifest base-excluded).",
     "caveats": [
@@ -145,7 +145,9 @@
       "ExtraRatio (ST126 free-spin global multiplier) is constant 0 on all 1996 free-spin rounds in this sample. Non-zero meaning undetermined from this data. Parse-as-is (constant 0); forward-compatible (already in the ST126 signature).",
       "GameplayTriggerType present and constant 0 on all rounds (both STs). Not used as a trigger discriminator here (constant). Parse-as-is; forward-compatible.",
       "Mode-1-only onboarding. Modes 2/5/7 (if present) NOT analyzed; they may exercise other STs and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
-    ]
+    ],
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

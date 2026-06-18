@@ -1,7 +1,9 @@
 {
   "machine_id": "M3",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
@@ -117,8 +119,8 @@
     "note": "Wheel (ST2) is opened directly by an ST1 paid spin carrying ReMarks='Trigger' (408/40,000 = 1.02% of paid spins; pid '1' marker, may co-carry normal-win pids; PayoutGroupId 0). Every ST1 'Trigger' is immediately followed by exactly one ST2 wheel (408/408, 0 orphans). The wheel pays direct credits (WinCredits) and returns to ST1 -> NO freespin / indirect path (contrast M207 which routes wheel-cells 1/8/13 into an ST117 freespin block). SINGLE exhaustive entry path (no discriminator) -> NO trigger_paths dimension. M3 = M207 minus the ST117 LockSymbolFreespin (M3 wheel is a direct-pay collect settlement only). cell_pattern derived from THIS machine's data: ReMarks 'WheelSpin CellIndex <n>;', cells observed 2-22 (max index 22 -> cell_count 22; cells 1 and 15 unobserved in the 408-wheel sample, honestly null like M207 cell 12 / M283 cell 7)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M3/mode_1"
@@ -132,7 +134,9 @@
       "Single config-md5 bucket d26e9de3/3653a4d4 (single chunk chunk_0007.json; no mixed-md5 pooling concern). modes: [1] only (the only mode with cached rawdata). Extend on data, never by assumption.",
       "PROVENANCE: every NUMBER belongs to this bucket; structure claims are value-agnostic; any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s. validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {
@@ -146,7 +150,9 @@
   ],
   "round_win_rule": null,
   "rtp_integrity": {
-    "paid_st": [1],
+    "paid_st": [
+      1
+    ],
     "fallback_warn": 0.5,
     "fallback_fail": 5.0
   }

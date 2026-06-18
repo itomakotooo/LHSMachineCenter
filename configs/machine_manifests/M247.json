@@ -1,55 +1,228 @@
 {
   "machine_id": "M247",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "140": {
       "role": "paid_spin",
       "play": "NormalCollectionSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
-      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "CollectCount",
+        "AccCredits",
+        "CreditsSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "AccCredits",
+        "BetAmount",
+        "CollectCount",
+        "CostCredits",
+        "CreditsSymbols",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "SymbolIndexToRewards",
+        "WinCredits"
+      ],
       "observed_fields_source": "st_inventory M247/mode_1 bucket 09682fbc/212d4b90 2026-06-18 (80,000 ST140 rows, all 22 fields 100% present)"
     },
     "13": {
       "role": "hold_respin",
       "play": "LockReSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "LockLines", "ReMarks", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "LockLines", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "LockLines",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockLines",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
       "observed_fields_source": "st_inventory M247/mode_1 bucket 09682fbc/212d4b90 2026-06-18 (3,478 ST13 rows, all 19 fields 100% present; cost=0 reel respin, LockLines locked-reel marker, ReelSkin 11, win settles via native PayoutIdToWinAmount — residual=0 on every winning round)"
     },
     "36": {
       "role": "respin",
       "play": "MoveSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
       "observed_fields_source": "st_inventory M247/mode_1 bucket 09682fbc/212d4b90 2026-06-18 (4 ST36 rows, all 18 fields 100% present; ReMarks='move...', cost=0 free wild-nudge re-spin sharing the paid spin's SpinTimes; win settles via native PayoutIdToWinAmount — residual=0). EXACT M279 ST36 MoveSpin precedent."
     },
     "137": {
       "role": "settlement",
       "play": "PreWheel",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "WinCredits"
+      ],
       "observed_fields_source": "st_inventory M247/mode_1 bucket 09682fbc/212d4b90 2026-06-18 (1,794 ST137 rows, all 7 fields 100% present; ReMarks='PreWheel ReqCommonParam'; bare-WinCredits settlement, NO reel fields, NO PayoutIdToWinAmount on 100% of rows — the PreWheel feature's settled prize. Win settles via WinCredits only -> attributed by m247_prewheel_settlement SynthesizePayIdRule)."
     },
     "139": {
       "role": "settlement",
       "play": "ListRewardWheel",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "RewardLastNode", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "RewardLastNode",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
       "observed_fields_source": "st_inventory M247/mode_1 bucket 09682fbc/212d4b90 2026-06-18 (2,005 ST139 rows, all 18 fields 100% present; ReMarks='Minigame CellIndexes: <10 cells>,curTimes:N,totalTimes:M'; StopSymbolsByCol empty, no reel win, NO PayoutIdToWinAmount on 100% of rows. The ListRewardWheel minigame settlement — WinCredits is the real win; the per-round CellIndex list + RewardLastNode reward-node ladder are parser_blind (the per-ST extraction accumulator, framework-team). Win settles via WinCredits only -> attributed by m247_listrewardwheel_settlement SynthesizePayIdRule)."
     },
     "136": {
       "role": "state",
       "play": "WheelSelector",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "ReMarks", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "ReMarks",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType"
+      ],
       "observed_fields_source": "st_inventory M247/mode_1 bucket 09682fbc/212d4b90 2026-06-18 (1,794 ST136 rows, all 6 fields 100% present; ReMarks='WheelSelector'; bare marker round, NO WinCredits field, win=0 on 100% — an empty/state round that opens the wheel selection. No win to attribute -> no synth)."
     }
   },
@@ -60,9 +233,12 @@
     "note": "No single round-level trigger pid. ST140 (NormalCollectionSpin) is the PAID base reel spin (cost=1000/spin) carrying a BuffCollection metronome (CollectCount ticks +1/paid spin 1->1000, AccCredits = 100xCollectCount, resets each cycle). The metronome is a DISPLAY counter, NOT an additive coin channel: SymbolIndexToRewards is present-but-always-empty ({} on 80,000/80,000), CreditsSymbols carries no additive win, and on every ST140 round WinCredits == sum(PayoutIdToWinAmount) (residual=0 on 100%) — the entire base win settles through the payline payid, so there is NO _unattributed_residual (NOT a live collect-coin channel; T2-supportable manifest-only). ST13 (LockReSpin, role hold_respin) and ST36 (MoveSpin, role respin) are free cost=0 reel re-spins sharing the paid spin's SpinTimes, both settling via native PayoutIdToWinAmount (residual=0). The wheel/minigame feature flow is ST136 WheelSelector (state, win=0) -> ST137 PreWheel (bare-WinCredits settlement, no payid) and ST139 ListRewardWheel (Minigame CellIndexes, bare-WinCredits settlement, no payid) — both no-payid settlements attributed by config-only SynthesizePayIdRules (m247_prewheel_settlement / m247_listrewardwheel_settlement). Per-feature WinCredits matches the server analysisResult SummaryWin EXACTLY: ST140=16,763,200 NormalCollectionSpin, ST13=18,285,300 LockReSpin, ST137=21,984,000 PreWheel, ST139=6,228,000 ListRewardWheel, ST36=2,000 MoveSpin (sum 63,262,500 == server TotalWin 63,262,500 exact, both chunks)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M247/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M247/mode_1"
+    },
     "evidence": "W1 deep-parse (M247/mode_1, 2 real _cache_version:3 chunks, single md5 bucket 09682fbc/212d4b90, 16 robots, 85,492 rounds): ST inventory {140:80000 (paid), 13:3478, 139:2005, 136:1794, 137:1794, 36:4}. ROLES derived from own fields: ST140 paid_spin (cost=1000 reel + payline payid, residual=0); ST13 hold_respin/LockReSpin (cost=0 reel, LockLines, ReelSkin 11, payline payid residual=0) [VALIDATED ST]; ST36 respin/MoveSpin (cost=0 reel, ReMarks 'move', payline payid residual=0) [VALIDATED ST]; ST137 settlement/PreWheel (bare WinCredits, no reel, no payid -> synth); ST139 settlement/ListRewardWheel (Minigame CellIndexes, no reel win, no payid -> synth); ST136 state/WheelSelector (bare marker, win=0). PLAY names = analysisResult FeatureWin keys (NormalCollectionSpin/LockReSpin/ListRewardWheel/WheelSelector/PreWheel; MoveSpin from FeatureWin). ABORT conditions CHECKED and CLEARED: (a) ST140 SymbolIndexToRewards never populated (0/80,000 — present-but-empty {}); (b) NO additive no-payid win on any reel ST (ST140/13/36 win_no_payid=0, WinCredits==sum(payid) on 100%) -> NO _unattributed_residual; (c) ST137/ST139 are PURE no-payid settlements (no payline payid alongside) = the M43-ST51/M279-ST2 clean synth case, NOT a residual coin channel; (d) no settle-chain the shared plugin rejects, no diverging value-semantics. NOT T3. STRUCTURE supportable manifest-only + 2 config SynthesizePayIdRules (NO new plugin, NO machine_spec edit: all roles {paid_spin,hold_respin,respin,settlement,state} in KNOWN_ROLES; respin->respin_dynamics + hold_respin->freespin_dynamics ROLE hooks already registered; plays not in PLAY_ANALYSES so no specialized wheel/minigame plugin fires). base_hash unchanged 3ddaa183f38c.",
     "caveats": [
       "VALIDATION auto: data-derived only; gate-8 user domain sign-off pending (out-of-engine declaration). hold_respin role on ST13 honors the brief's validated ST verdict (LockReSpin). NOT yet confirmed.",
@@ -72,11 +248,26 @@
       "modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption.",
       "PROVENANCE: structure claims value-agnostic; every NUMBER belongs to the single md5 bucket 09682fbc/212d4b90. Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' present on every reel ST (140/13/36/139) but =0 on 100% of 85,487 in-sample records carrying it. Fleet-wide test-interface-zeroed pattern (user-confirmed 2026-06-12 on M275, M278/M279 precedent): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the reel-ST signatures, so parsing is FORWARD-COMPATIBLE — when the interface populates it the parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). Declaration-based out-of-engine protocol (gate-8): recorded once per machine, not a per-machine re-confirmation question.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' present on every reel ST (140/13/36/139) but =0 on 100% of 85,487 in-sample records carrying it. Fleet-wide test-interface-zeroed pattern (user-confirmed 2026-06-12 on M275, M278/M279 precedent): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the reel-ST signatures, so parsing is FORWARD-COMPATIBLE — when the interface populates it the parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). Declaration-based out-of-engine protocol (gate-8): recorded once per machine, not a per-machine re-confirmation question.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": "m247_prewheel_settlement (synthesize_pay_id, spin_types=[137], label_format=spin_type) + m247_listrewardwheel_settlement (synthesize_pay_id, spin_types=[139], label_format=spin_type) — added to configs/machine_round_win_rules.json; zero _unattributed_st137 (21,984,000 -> real pid st137) and _unattributed_st139 (6,228,000 -> real pid st139). EXACT M43/M279/M278 precedent.",
-  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      140
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

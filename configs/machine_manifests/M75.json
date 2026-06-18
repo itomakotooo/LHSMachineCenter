@@ -169,7 +169,10 @@
     "note": "no round-level trigger pid; both features fire server-side (st50 ReMarks=ReSpin, free cost=0 reel respin; st51 ReMarks=MiniGame settlement). Exact M44/M43 archetype (same code_md5 e449b20f as M44). Trigger gating not in rawdata (parser_blind), per M43/M44 precedent."
   },
   "validation": {
-    "status": "auto"
+    "status": "confirmed",
+    "user_signed_off": true,
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

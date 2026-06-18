@@ -70,13 +70,15 @@
     "note": "Base-game-only machine in mode 1. No granted-session / feature trigger exists: ReMarks empty on 40,000/40,000 rounds, GameplayTriggerType constant 0, FeatureWin single key 'Normal'. No trigger session structure to reconstruct. NO trigger_paths dimension (single ST, no discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M64/mode_1"
     },
-    "evidence": "onboard-implementer T1-batch manifest-only onboard 2026-06-18 (single-ST paid base-game). Deep parse: st_inventory('M64',1) + cross-signal re-sum over the cached chunk (chunk_0002.json, _cache_version 3 REAL, _bet 1000, config-md5 6738b14d / code-md5 536fc5a2). Single SpinType tally {1:40000}; role paid_spin (StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present on 100%, CostCredits=BetAmount=1000 on 100%, no 0-cost free ST); ReMarks {\"\":40000}; GameplayTriggerType constant 0; FeatureWin single key 'Normal' (READ from analysisResult, not assumed). No-payid settlement ruled out: sum(PayoutIdToWinAmount)==sum(WinCredits)==33,651,720 on the 40,000-round sample. Field set byte-identical to confirmed M70 single-ST-paid signature/observed set. report_engine.generate_report_from_chunks('M64',1,bet=1000): rtp_integrity_check.passed==True, NO _unattributed_* fallback bucket. base_hash 3ddaa183f38c unchanged (manifest base-excluded). STRICT-REUSE of the shared cross-cutting + per-spintype paid_spin plugins (no NEW plugin, no fork). RTP value NOT pinned (value-agnostic gate)."
+    "evidence": "onboard-implementer T1-batch manifest-only onboard 2026-06-18 (single-ST paid base-game). Deep parse: st_inventory('M64',1) + cross-signal re-sum over the cached chunk (chunk_0002.json, _cache_version 3 REAL, _bet 1000, config-md5 6738b14d / code-md5 536fc5a2). Single SpinType tally {1:40000}; role paid_spin (StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present on 100%, CostCredits=BetAmount=1000 on 100%, no 0-cost free ST); ReMarks {\"\":40000}; GameplayTriggerType constant 0; FeatureWin single key 'Normal' (READ from analysisResult, not assumed). No-payid settlement ruled out: sum(PayoutIdToWinAmount)==sum(WinCredits)==33,651,720 on the 40,000-round sample. Field set byte-identical to confirmed M70 single-ST-paid signature/observed set. report_engine.generate_report_from_chunks('M64',1,bet=1000): rtp_integrity_check.passed==True, NO _unattributed_* fallback bucket. base_hash 3ddaa183f38c unchanged (manifest base-excluded). STRICT-REUSE of the shared cross-cutting + per-spintype paid_spin plugins (no NEW plugin, no fork). RTP value NOT pinned (value-agnostic gate).",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

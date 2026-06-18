@@ -133,8 +133,8 @@
     "note": "No round-level trigger pid. ST50 is a FREE (CostCredits=0) respin carrying ReMarks='ReSpin' (199/199); it fires server-side after a base win and chains on its own win (M42/M43 WinRespin archetype). Win-gating rule is not in the rawdata (parser_blind). NO trigger_paths dimension (no in-data discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M223/mode_1"
@@ -148,7 +148,9 @@
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding; only mode_1 has cached chunks). Structure is value-agnostic and should extend to other modes if/when sampled, but each MUST get its own W1 + reuse pass before any reuse claim.",
       "validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 domain sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

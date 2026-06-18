@@ -166,8 +166,8 @@
     "note": "SINGLE trigger path on M220 mode 1: scatter pid 666 on the preceding st140 paid spin opens a NewFreespin session (ReMarks 'Freespin N; ', win 0 marker on the trigger round itself; 277 sessions in 80,000 paid spins). GameplayTriggerType is constant 0 (scatter) on all 3,360 st126 rounds in this data -> the collect-peak / pity-timer path that M275 carries does NOT fire here (CollectCount=0 on 100% of st140 rounds; AccCredits=0 on 100%). The trigger_paths block declares the single scatter path; any future non-zero GameplayTriggerType surfaces as an unknown path (signal, not residual). st126 win settles via its OWN natural PayoutIdToWinAmount (sum(payid)==WinCredits on 3,360/3,360 rounds) -> no SynthesizePayIdRule needed."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M220/mode_1"
@@ -181,7 +181,9 @@
       "Single config-md5 bucket 1c797b63/372d675a (2 chunks; no mixed-md5 pooling concern). Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s.",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs were not opened; they may exercise other STs, non-zero GameplayTriggerType, or activate the collection mechanic and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

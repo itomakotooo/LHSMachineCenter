@@ -215,8 +215,8 @@
     "note": "Single freespin trigger path in mode 1: scatter pid 666 = a win=0 marker that opens the NewFreespin (ST126) session. pid 666 appears on the base round (ST1) and also on the in-feature WinRespin (ST50) that immediately precedes the first ST126 (W1: 639 pid-666 rounds, value 0 on 100%). GameplayTriggerType is constant 0 on all 4,473 ST126 rounds => single 'scatter' path (no collect-peak / counter path on this machine). Episode = 7 freespins (standard; W1 run-length 7=443, with shorter chunk-boundary truncations and re-trigger tails to 21). ST50 WinRespin is a FREE cost=0 reel respin (ReMarks='ReSpin', flat respin chain); it can also carry the 666 trigger, granting the freespin from inside the respin chain. No collect/counter mechanic present."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M180/mode_1"
@@ -231,7 +231,9 @@
       "Single config-md5 bucket 82ff65d0/8a9ff417 (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 domain sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

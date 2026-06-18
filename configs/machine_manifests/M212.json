@@ -155,8 +155,8 @@
     "note": "Bonus (ST126 NewFreespin) is opened by ST1 carrying PayoutId 666 (a win=0 marker on all 98/98 occurrences; every pid-666 ST1 round is immediately followed by an ST126 burst, 98/98). Episode = 12 freespins (skin 11), 98 bursts all length 12 in this 40k-paid-spin sample. GameplayTriggerType is constant 0 on both STs -> the single scatter trigger path. No retrigger / no other trigger path observed."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M212/mode_1"
@@ -170,7 +170,9 @@
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Other modes may exercise additional STs / non-zero GameplayTriggerType / non-zero ExtraRatio and MUST get their own W1 + reuse pass before any reuse claim.",
       "PARSER-BLIND felt-experience dimensions deferred (never fabricated): per-round wild-density x multiplier, freespin FS-index x outcome arc, ExtraRatio ladder. These need the per-ST extraction accumulator (DIRECTION.md section 3, framework-team). M212 onboards correctly without them."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

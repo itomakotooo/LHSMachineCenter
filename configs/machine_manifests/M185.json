@@ -215,8 +215,8 @@
     "note": "NewFreespin (ST126) opens from a base spin (ST1) carrying pid 666 (win=0 trigger marker, 486 occurrences; 471 immediately followed by ST126). GameplayTriggerType constant 0 on all STs in this bucket -> single scatter trigger path. The freespin session continues 126->126 (carries ExtraRatio multiplier). WinRespin (ST50, ReMarks='ReSpin', cost=0) is a FREE reel respin entered from ST1 (2,017) and continued 50->50 (3,403); a small fraction (207) is granted INSIDE the freespin (126->50), the M182-precedent bonus-internal respin. Single config-md5 bucket 7db01ed4/8a9ff417."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M185/mode_1"
@@ -229,7 +229,9 @@
       "ExtraRatio ladder (freespin multiplier), respin burst-length, and per-FS-index outcome arc are PARSER-BLIND (need per-round / run-length accumulation in the per-ST extraction layer; never fabricated into this manifest). Framework-team candidates.",
       "modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

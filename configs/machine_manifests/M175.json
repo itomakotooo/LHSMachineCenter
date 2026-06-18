@@ -1,34 +1,127 @@
 {
   "machine_id": "M175",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M175/mode_1 bucket 711da720/6231f649 2026-06-18"
     },
     "2": {
       "role": "settlement",
       "play": "Wheel",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "StopSymbolsByCol",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M175/mode_1 bucket 711da720/6231f649 2026-06-18",
-      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 12, "prize_basis": "win_over_bet"}
+      "wheel_cells": {
+        "spin_type": 2,
+        "remarks_field": "ReMarks",
+        "cell_pattern": "CellIndex\\s+(\\d+)",
+        "cell_count": 12,
+        "prize_basis": "win_over_bet"
+      }
     }
   },
-  "trigger": {"payout_id": null, "remarks": "Trigger Wheel|WheelSpin", "opens": "Wheel", "note": "no round-level trigger pid. Wheel (ST2) is the settlement of a multi-wheel burst opened by a paid ST1 carrying ReMarks ' Trigger Wheel' (137/137 bursts). Each burst = exactly 3 ST2 wheels (WheelId 1/2/3); the win settles on the LAST wheel only (137/137, zero wins on the non-final wheels of the burst). NOT a payid scatter — ST2 has no native PayoutIdToWinAmount. SINGLE entry path (137/137, exhaustive, no discriminator) -> NO trigger_paths dimension. M175 = M283/M279 wheel archetype with a plain Normal base spin (no CollectCount metronome, no MoveSpin nudge)."},
+  "trigger": {
+    "payout_id": null,
+    "remarks": "Trigger Wheel|WheelSpin",
+    "opens": "Wheel",
+    "note": "no round-level trigger pid. Wheel (ST2) is the settlement of a multi-wheel burst opened by a paid ST1 carrying ReMarks ' Trigger Wheel' (137/137 bursts). Each burst = exactly 3 ST2 wheels (WheelId 1/2/3); the win settles on the LAST wheel only (137/137, zero wins on the non-final wheels of the burst). NOT a payid scatter — ST2 has no native PayoutIdToWinAmount. SINGLE entry path (137/137, exhaustive, no discriminator) -> NO trigger_paths dimension. M175 = M283/M279 wheel archetype with a plain Normal base spin (no CollectCount metronome, no MoveSpin nudge)."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M175/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M175/mode_1"
+    },
     "evidence": "T1 batch exact-archetype onboard (manifest-only, no new code). W1 deep-parse of M175/mode_1 chunk_0002.json (_cache_version 3 REAL, single md5 bucket 711da720/6231f649; 40,411 rounds: 40,000 ST1 + 411 ST2; FeatureWin taxonomy = {Normal, Wheel} — exactly these two STs, no hidden feature). ST1 = paid_spin/Normal: CostCredits=BetAmount=1000 on 100%; native pay_id space — sum(PayoutIdToWinAmount)==WinCredits exact 8569/8569 winning rounds; signature [BetAmount,CostCredits,StopSymbolsByCol,PayoutByPayline,WinCredits] matches validated Normal (M70/M137). ST2 = settlement/Wheel: 100%-present field set is SET-EQUAL to the validated M283/M207 Wheel signature; NO native payid (PayoutIdToWinAmount empty 411/411); win=WinCredits; CellIndex 1..12 -> cell_count 12; wheel opens via ' Trigger Wheel' ReMark on the paid spin (137 bursts), 3 wheels/burst, win on the LAST wheel only. ST2 no-payid -> config-only SynthesizePayIdRule (coordinator) zeroes _unattributed_st2.",
     "caveats": [
       "ST2 (Wheel) has NO native payid -> a config-only SynthesizePayIdRule (spin_types=[2], label_format=spin_type) zeroes _unattributed_st2. EXACT M283/M279 precedent (m283_wheel_settlement/m279_wheel_settlement). The rule is added to configs/machine_round_win_rules.json by the COORDINATOR (avoids a write race); this manifest's round_win_rule is null.",
@@ -38,7 +131,9 @@
       "GameplayTriggerType present and constant 0 on all 40,000 ST1 in mode 1. Parse-as-is; forward-compatible (in the ST1 signature).",
       "Modes 2/5/7 NOT present in cache (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {
@@ -51,5 +146,11 @@
     }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

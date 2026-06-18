@@ -133,8 +133,8 @@
     "note": "no round-level trigger pid; respin (st50) fires server-side as a FREE (CostCredits=0) reel re-spin after a base spin, ReMarks='ReSpin' on 100% of st50 rounds, BetAmount carried at 1000 (echo). Win-gating rule not in rawdata (parser_blind). Mirrors the M42 archetype (ST1 Normal + ST50 WinRespin, no ST51 minigame)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M221/mode_1"
@@ -148,7 +148,9 @@
       "GameplayTriggerType present and constant 0 on all rounds in mode 1. Parse-as-is; forward-compatible (in both ST signatures' observed_fields).",
       "Modes other than 1 NOT analyzed (mode-1-only onboarding; only mode_1 has cached chunks). Structure is value-agnostic; status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

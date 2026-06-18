@@ -70,8 +70,8 @@
     "note": "Base-game-only machine in mode 1. No granted-session / feature trigger exists: ReMarks empty on 40,000/40,000 rounds, GameplayTriggerType constant 0, FeatureWin single key 'Normal'. No trigger session structure to reconstruct. NO trigger_paths dimension (single ST, no discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M200/mode_1"
@@ -84,8 +84,8 @@
       "High-multiplier tail under-sampled on the single ~40k chunk: low-frequency payout ids (e.g. pid 1/2/3/4 each n<=15, pid 5 n=23) are DIRECTIONAL, not precise. NOT re-fetched (cache-only)."
     ],
     "date": "2026-06-18",
-    "signed_off_date": null,
-    "gate8_note": "Pending: status 'auto' until breaker + gate-7 render verify + user gate-8 domain sign-off. No hidden out-of-engine mechanics surfaced beyond the fleet CurJackpotStoreWin test-interface-zeroing."
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

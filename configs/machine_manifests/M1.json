@@ -70,8 +70,8 @@
     "note": "Base-game-only machine in mode 1. No granted-session / feature trigger exists: ReMarks empty on all sampled rounds, FeatureWin single key 'Normal', GameplayTriggerType constant 0 where present. No trigger session structure to reconstruct. NO trigger_paths dimension (single ST, no discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M1/mode_1"
@@ -82,7 +82,9 @@
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Other modes may exercise other STs / non-zero GameplayTriggerType and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off.",
       "Mode-1 cache is multi-chunk (589 chunks, 5.86M rounds). Sampling-based caveats (high-multiplier tail precision) apply directionally; no per-chunk md5 mixing was inspected at onboarding time. NOT re-fetched (cache-only)."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

@@ -156,8 +156,8 @@
     "note": "Single trigger path opens the NewFreespin 7-spin session: scatter pid 666 = bonus marker on the paid ST1 (win=0; 1.552%/paid spin = 621/40,000; 100% of trigger rounds immediately precede a ST126 'Freespin 1;' round). Episode is exactly 7 freespins on 621/621 sessions (no re-trigger observed in-sample). GameplayTriggerType is constant 0 on both STs (single discriminated path; any new value surfaces as an unknown path). ExtraRatio present on ST126 but constant 0 in this bucket (kept in the signature, forward-compatible)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M184/mode_1"
@@ -169,7 +169,9 @@
       "GameplayTriggerType is present and constant 0 on all rounds of both STs in mode 1; ExtraRatio is present on ST126 and constant 0 in this bucket. Both kept in the signature (parse-as-is, forward-compatible) — non-zero meaning undetermined from mode-1 data.",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding); they may exercise other STs and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

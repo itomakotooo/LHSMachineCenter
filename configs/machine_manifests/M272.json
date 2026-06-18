@@ -164,8 +164,8 @@
     "note": "TWO trigger paths open the SAME NewFreespin session from the paid base ST140: (a) scatter pid 666 = bonus symbols on the paid spin (win 0 marker; 434/474 of all triggers); (b) CollectCount==1000 (deterministic pity timer, +1 every paid spin, resets at 1000; 40/474). The two are mutually exclusive over all 474 observed trigger entries (0 overlap, 0 orphans). M272's GameplayTriggerType is constant 0 on every ST126 round (does NOT discriminate the paths, unlike M275); the per-round anchor walk (pid-666 vs CollectCount-reset on the opening ST140) discriminates them exactly. ST126 (NewFreespin) carries WinCredits>0 on 474 rounds (19,180,000, ~48% of all in-sample payback) but NO PayoutIdToWinAmount (PayoutIdToWinAmount={} on 7608/7608, PayoutByPayline empty on 7608/7608) — divergent from M275/M182 ST126 which DO carry a natural payid; M272's freespin win therefore needs a config-only SynthesizePayIdRule (st126) to keep sum(payid)==summary and _unattributed_st126==0. CurJackpotStoreWin present and =0 on 100% (fleet test-interface zeroing)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M272/mode_1"
@@ -181,7 +181,9 @@
       "Single config-md5 bucket 4876fcbd/4140b23f (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs were not opened; they may exercise other STs or non-zero GameplayTriggerType and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

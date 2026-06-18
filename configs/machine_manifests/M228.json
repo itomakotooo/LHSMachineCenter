@@ -205,8 +205,8 @@
     "note": "Three-ST collection machine (NormalCollectionSpin archetype). ST140 = the PAID base reel spin (CostCredits=1000 on 80,000/80,000). Two FREE (CostCredits=0) extension events fire off the base spin: ST50 WinRespin (ReMarks='ReSpin' on 3,797/3,797; the respin reel spin) and ST13 LockReSpin (LockLines present; held-wild hold-and-respin). NO single round-level trigger pid; GameplayTriggerType constant 0 on every ST140/ST13/ST50 round (NOT a discriminator). NO trigger_paths dimension declared: the M277 ST13 trigger-path split relied on (A) the opening ST140 carrying pid '777' win==0 and (B) CollectCount==1000 collect-peak pity — NEITHER exists in M228 mode-1 data (0 ST140 rounds carry pid '777'; CollectCount==0 on 100% of 80,000 ST140 so the metronome is INERT and never peaks). With no trigger discriminator and an inert collect meter, the data does not support a trigger_paths block (added only when the data supports it). All three STs carry a NATURAL PayoutId space: sum(PayoutIdToWinAmount)==sum(WinCredits) on 100% of rounds (ST140 45,197,000; ST13 23,574,000; ST50 5,508,000; 0 mismatch each) -> NO SynthesizePayIdRule needed on any ST."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M228/mode_1"
@@ -221,7 +221,9 @@
       "Single config-md5 bucket ecec6782/dc8633d6 (2 chunks, no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs were not opened; they may exercise other STs, non-zero GameplayTriggerType, or activate the collection mechanic (CollectCount/AccCredits) and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

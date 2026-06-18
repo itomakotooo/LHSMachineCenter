@@ -158,8 +158,8 @@
     "note": "ST117 LockSymbolFreespin is opened DIRECTLY from the paid base: every freespin block (827/827, W1 trace) is preceded by an ST1 round carrying RewardLastNode '666-' / PayoutId 666 (827 markers; pays 0 credits on 665 of them, an outcome marker). Base block = 7 freespins (ReMarks 'Freespin N of 7'); retriggers extend it +7 ('AddFreespin 7' -> 14/21/28/42, block-length dist {7:750,14:65,21:10,28:1,42:1}). GameplayTriggerType is constant 0 on all ST117 rounds (single trigger path, mirrors M182/M275 direct-entry; NOT the M207 indirect wheel topology — M183 has no ST2). ReelSkin=8 on the freespin board (vs 1 on base). Both STs carry natural PayoutIdToWinAmount that reconciles to WinCredits exactly -> no synthesized payid, no fallback bucket."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M183/mode_1"
@@ -175,7 +175,9 @@
       "Rare arms UNDER-SAMPLED on the single ~46k chunk: long freespin blocks (28-spin n=1, 42-spin n=1) and tail multipliers are DIRECTIONAL not converged. Structure is correct; rare-arm VALUES need scale (re-sample item, non-blocking for structural onboarding; cache-only, not re-fetched).",
       "validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 domain sign-off (coordinator)."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

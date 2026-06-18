@@ -154,8 +154,8 @@
     "note": "ST1 with PayoutIdToWinAmount {'666': 0} / RewardLastNode '666-' / WinCredits 0 is a win-0 marker (579/40,000 = 1.4475% of paid spins) that opens an ST117 LockSymbolFreespin block of exactly 7 free spins (ReMarks 'Freespin 1 of 7' .. 'Freespin 7 of 7'; block length 7 on 579/579 blocks). The grant is DIRECT (ST1 -> ST117; predecessor of every ST117 block is ST1, 579/579) — there is no intermediate wheel/settlement ST on this machine. ST1 ReMarks is empty on all 40,000 rounds; the trigger is detected from the pid-666 marker, not ReMarks. The generative reel rule that mints pid 666 is an observed OUTCOME marker (testspin-blind to the grid rule that produces it)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M193/mode_1"
@@ -170,7 +170,9 @@
       "RTP magnitude: Sum(WinCredits)/Sum(CostCredits) = 31,785,000 / 40,000,000 = 79.46% (paid base = ST1 CostCredits only; ST117 cost 0). FLAG: ST117 carries BetAmount=1000 at CostCredits=0 — an RTP denominator built from BetAmount (not CostCredits) would over-count the paid base; the paid unit is ST1's CostCredits (rtp_integrity.paid_st=[1]). RTP magnitude is not an onboarding criterion (parse-correctness is); per feedback_dev_ci_scope dev does not chase CI.",
       "validation.status stays 'auto' until breaker + gate-7 render verify + user domain sign-off (gate 8)."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

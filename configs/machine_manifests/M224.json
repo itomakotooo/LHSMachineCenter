@@ -133,8 +133,8 @@
     "note": "no round-level trigger pid; respin fires server-side after a base WIN (FREE CostCredits=0 reel re-spin, ReMarks=ReSpin) and chains on its own win. Win-gating rule not in rawdata (parser_blind, inherited from M42/M43 respin archetype)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M224/mode_1"
@@ -146,7 +146,9 @@
       "modes 2/5/7 not sampled in cache; manifest scoped to mode 1. Structure is value-agnostic and should extend if/when other modes are sampled.",
       "validation.status=auto pending coordinator gate-8 user domain sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [],
   "round_win_rule": null,

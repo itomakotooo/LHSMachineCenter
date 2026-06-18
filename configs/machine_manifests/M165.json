@@ -215,7 +215,7 @@
     "note": "Single freespin trigger path observed in mode 1: scatter pid 666 = bonus on all 3 reels (win=0 marker node on st1, 188/188 occurrences pay 0; the round immediately preceding the first 'Freespin 1' ST126 carries pid 666 in 190/198 episode openers — the rest are mid-episode ST50/ST126 continuations, not new triggers). ST126 GameplayTriggerType is uniformly 0 (scatter) in this bucket. The WinRespin (ST50) is a free cost=0 reel respin granted server-side after a base win (ReMarks='ReSpin'); it is independent of the freespin episode. NO collect/pity counter on this machine (no CollectCount field), so the M275-style second 'collect_peak' path does NOT apply here — single-path declaration."
   },
   "validation": {
-    "status": "auto",
+    "status": "confirmed",
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M165/mode_1"
@@ -229,7 +229,10 @@
       "ExtraRatio present on st126 but =0 on 100% of rounds in this bucket (the ER win-multiplier ladder is not exercised here); parse-as-is, forward-compatible (in the st126 signature). The ER ladder felt-dimension is parser_blind (needs the per-ST freespin-progression extractor), NOT fabricated into the manifest.",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "user_signed_off": true,
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

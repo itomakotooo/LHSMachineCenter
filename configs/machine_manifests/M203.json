@@ -1,66 +1,219 @@
 {
   "machine_id": "M203",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M203/mode_1 bucket f6399ed0/cdc5e43e 2026-06-18",
       "note": "The PAID base reel spin (CostCredits=1000>0, full reel fields, sum(PayoutIdToWinAmount)==WinCredits on 80,000/80,000 rounds). 402 rounds carry ReMarks='Trigger Wheel' + payid 666 (pays 0 credits) — the wheel-feature trigger (same trigger-marker shape as M15 ST1 pid 666). Field signature matches the VALIDATED ST1/ST35 paid_spin/Normal -> strict-reuse the 4 generic PER_SPINTYPE plugins (no new code)."
     },
     "2": {
       "role": "settlement",
       "play": "Wheel",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "StopSymbolsByCol",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M203/mode_1 bucket f6399ed0/cdc5e43e 2026-06-18",
       "note": "The Wheel collect settlement (ReMarks='WheelSpin CellIndex N; WheelId 1;', StopSymbolsByCol degenerate ['NULL','NULL','NULL'], WinCredits settles, NO PayoutIdToWinAmount and no BetAmount). Field signature EXACT-MATCHES the VALIDATED ST2 settlement/Wheel (M279/M283) -> STRICT-REUSE the wheel_dynamics plugin (already play-keyed to 'Wheel' in machine_spec) + the M43/M279 SynthesizePayIdRule precedent. State machine (verified 402 triggers): each ST1 'Trigger Wheel' opens a wheel block of 2-4 ST2 spins (mean 2.35); intermediate ST2 win 0 (advance/preview), the LAST ST2 settles (402 triggers -> exactly 402 winning last-ST2, the only real wheel win; 543 non-winning ST2 are previews). NO native payid -> needs synth (m203_wheel_settlement) so sum(payid)==summary and _unattributed_st2 -> 0.",
-      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 24, "prize_basis": "win_over_bet"}
+      "wheel_cells": {
+        "spin_type": 2,
+        "remarks_field": "ReMarks",
+        "cell_pattern": "CellIndex\\s+(\\d+)",
+        "cell_count": 24,
+        "prize_basis": "win_over_bet"
+      }
     },
     "136": {
       "role": "state",
       "play": "WheelSelector",
-      "economy": {"win_field": null, "kind": "marker"},
-      "signature": ["ReMarks", "SpinType"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType"],
-      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0},
+      "economy": {
+        "win_field": null,
+        "kind": "marker"
+      },
+      "signature": [
+        "ReMarks",
+        "SpinType"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0
+      },
       "observed_fields_source": "st_inventory M203/mode_1 bucket f6399ed0/cdc5e43e 2026-06-18",
       "note": "A bare STATE marker round (ReMarks='WheelSelector'; no win field at all, no reel fields). Emitted between ST2 wheel spins inside the wheel block (the wheel-cell selector step). FeatureWin key 'WheelSelector'. 543/543 rounds carry no win. Manifest-only; no per-ST plugin (the generic PER_SPINTYPE plugins handle the empty-state histogram)."
     },
     "137": {
       "role": "state",
       "play": "PreWheel",
-      "economy": {"win_field": null, "kind": "marker"},
-      "signature": ["ReMarks", "SpinType"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "WinCredits"],
-      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": null,
+        "kind": "marker"
+      },
+      "signature": [
+        "ReMarks",
+        "SpinType"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M203/mode_1 bucket f6399ed0/cdc5e43e 2026-06-18",
       "note": "A STATE marker round (ReMarks='PreWheel ReqCommonParam'; carries a WinCredits field that is 0 on 100% of 543 rounds — a preview/marker, NOT a real win, must count 0). No reel fields, no payid. Emitted between ST2 wheel spins (the pre-wheel parameter request step). FeatureWin key 'PreWheel'. Manifest-only; no per-ST plugin."
     }
   },
-  "trigger": {"payout_id": "666", "remarks": "Trigger Wheel", "opens": "Wheel", "note": "ST1 round-level wheel trigger: payid 666 + ReMarks='Trigger Wheel' (pays 0 credits, opens the Wheel feature) on 402/80,000 paid spins. Same trigger-marker shape as M15 ST1 pid 666. The Wheel (ST2) is the collect settlement; ST136 (WheelSelector) + ST137 (PreWheel) are interstitial state markers."},
+  "trigger": {
+    "payout_id": "666",
+    "remarks": "Trigger Wheel",
+    "opens": "Wheel",
+    "note": "ST1 round-level wheel trigger: payid 666 + ReMarks='Trigger Wheel' (pays 0 credits, opens the Wheel feature) on 402/80,000 paid spins. Same trigger-marker shape as M15 ST1 pid 666. The Wheel (ST2) is the collect settlement; ST136 (WheelSelector) + ST137 (PreWheel) are interstitial state markers."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M203/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M203/mode_1"
+    },
     "evidence": "W1 (2 real v3 chunks, _cache_version:3, single config-md5 bucket f6399ed0/cdc5e43e, _bet=1000; 82,031 rounds): ST1 paid_spin/Normal (CostCredits=1000>0, sum(PayoutIdToWinAmount)==WinCredits 80,000/80,000, no _unattributed residual, NO live-collect field [no SymbolIndexToRewards/CollectCount/additive credits-collection channel]); ST2 settlement/Wheel (signature EXACT-MATCH to validated M279/M283 ST2 Wheel; WinCredits>0 settles on the LAST of 2-4 ST2 spins per trigger, NO payid -> synth needed; CellIndex 0..23 -> cell_count 24); ST136 state/WheelSelector + ST137 state/PreWheel (bare markers, win 0). FeatureWin taxonomy (double-decoded analysisResult): Normal/Wheel/WheelSelector/PreWheel — matches the per-ST plays exactly. CurJackpotStoreWin present on ST1 but =0 on 80,000/80,000 (test-interface-zeroed, fleet-wide pattern). DOMAIN CHECK (gate 8) PENDING user sign-off.",
     "caveats": [
       "ST2 wheel exact prize un-merge (per-cell prize map + jackpot-cell probability across the 24-cell map) is parser_blind — wheel_dynamics surfaces the band-level prize shape + hit-rate base-derivably; the per-cell un-merge needs the per-round ReMarks CellIndex accumulator (per-ST extraction layer, framework-team item — same boundary as M279/M283).",
       "CurJackpotStoreWin progressive store is present on ST1 but test-interface-zeroed (0 on 100% of the sample) — recorded in out_of_engine_mechanics, parsed as-is at 0, forward-compatible (fleet-wide test-interface behavior, user-confirmed 2026-06-12 for all machines)."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1 round but =0 on 100% of 80,000 in-sample paid spins. Fleet-wide pattern (user-confirmed 2026-06-12): a real progressive jackpot store that the CURRENT testspin interface forces to 0. Parse as-is (contributes 0 now); the field is already in the ST1 observed set, so parsing is FORWARD-COMPATIBLE — when the interface is optimized to populate it, the existing parser picks it up unchanged. The reported RTP is the BASE (excludes the progressive); the progressive ADDS on top once the interface enables it.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST1 round but =0 on 100% of 80,000 in-sample paid spins. Fleet-wide pattern (user-confirmed 2026-06-12): a real progressive jackpot store that the CURRENT testspin interface forces to 0. Parse as-is (contributes 0 now); the field is already in the ST1 observed set, so parsing is FORWARD-COMPATIBLE — when the interface is optimized to populate it, the existing parser picks it up unchanged. The reported RTP is the BASE (excludes the progressive); the progressive ADDS on top once the interface enables it.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

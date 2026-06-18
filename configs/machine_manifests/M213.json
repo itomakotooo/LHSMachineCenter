@@ -1,34 +1,130 @@
 {
   "machine_id": "M213",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M213/mode_1 bucket 3164e509/348af1f9 2026-06-18 (40,000 ST1 rounds; CostCredits=BetAmount=1000 on 100%; signature EXACT-MATCH to validated ST1 paid_spin/Normal references M70.json/M137.json)"
     },
     "2": {
       "role": "settlement",
       "play": "Wheel",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "StopSymbolsByCol", "IsLackCreditsSpin", "LastCredits"],
-      "observed_fields": ["IsLackCreditsSpin", "LastCredits", "RTPId", "ReMarks", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "StopSymbolsByCol",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M213/mode_1 bucket 3164e509/348af1f9 2026-06-18 (157 ST2 rounds; no native payid (PayoutIdToWinAmount/PayoutByPayline absent) -> NEEDS SynthesizePayIdRule; signature EXACT-MATCH to validated ST2 settlement/Wheel reference M283.json)",
-      "wheel_cells": {"spin_type": 2, "remarks_field": "ReMarks", "cell_pattern": "CellIndex\\s+(\\d+)", "cell_count": 24, "prize_basis": "win_over_bet"}
+      "wheel_cells": {
+        "spin_type": 2,
+        "remarks_field": "ReMarks",
+        "cell_pattern": "CellIndex\\s+(\\d+)",
+        "cell_count": 24,
+        "prize_basis": "win_over_bet"
+      }
     }
   },
-  "trigger": {"payout_id": null, "remarks": " Trigger Wheel", "opens": "Wheel", "note": "ST1 with ReMarks ' Trigger Wheel' (99/40,000) opens the Wheel feature; the Wheel settles via ST2 (settlement/Wheel, no native payid). ST2 carries WheelId 1/2/3 (multi-wheel selector) and CellIndex up to 24 (observed cells 1-18,21-24; 19/20 unobserved in the 157-wheel sample). Single entry path (ReMarks-flagged trigger -> Wheel), no per-path discriminator -> NO trigger_paths dimension (that block is freespin-only; this machine emits no freespin ST). M213 = M70/M137 base ST1 + M283-style ST2 wheel settlement, both signature-validated."},
+  "trigger": {
+    "payout_id": null,
+    "remarks": " Trigger Wheel",
+    "opens": "Wheel",
+    "note": "ST1 with ReMarks ' Trigger Wheel' (99/40,000) opens the Wheel feature; the Wheel settles via ST2 (settlement/Wheel, no native payid). ST2 carries WheelId 1/2/3 (multi-wheel selector) and CellIndex up to 24 (observed cells 1-18,21-24; 19/20 unobserved in the 157-wheel sample). Single entry path (ReMarks-flagged trigger -> Wheel), no per-path discriminator -> NO trigger_paths dimension (that block is freespin-only; this machine emits no freespin ST). M213 = M70/M137 base ST1 + M283-style ST2 wheel settlement, both signature-validated."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M213/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M213/mode_1"
+    },
     "evidence": "W1 (provenance + deep-parse): single REAL chunk chunk_0002.json, _cache_version=3 (NOT virtual; _dev_sample=None), single config-md5 bucket 3164e509/348af1f9 (no mixed-md5 pooling). SpinType tally {1:40000, 2:157}. ONLY ST1 + ST2 fire in mode 1 (the validated-map STs 35/140/50/36/51/126/117/14/15/13/160 are a SUPERSET reference; this machine emits none of them — onboard only what it emits). ST1 = paid_spin/Normal (CostCredits=BetAmount=1000 on 100%; native PayoutId space; ReMarks empty on 39,901, ' Trigger Wheel' on 99). ST2 = settlement/Wheel (NO native payid -> NEEDS SynthesizePayIdRule; ReMarks 'WheelSpin CellIndex <n>; WheelId <w>;'; WheelId 1/2/3; CellIndex 1-24). analysisResult FeatureWin keys = {Normal, Wheel} EXACTLY (no extra plays). W2 (reuse, EXACT-ARCHETYPE manifest-only, ZERO new code): ST1 signature {BetAmount,CostCredits,...,WinCredits} EXACT-MATCH validated paid_spin/Normal (M70.json/M137.json) -> STRICT-REUSE CROSS_CUTTING+PER_SPINTYPE; ST2 signature {SpinType,SpinTimes,RTPId,WinCredits,ReMarks,StopSymbolsByCol,IsLackCreditsSpin,LastCredits} EXACT-MATCH validated settlement/Wheel (M283.json) -> STRICT-REUSE wheel_dynamics (play-keyed 'Wheel', already wired for M279/M283) + the wheel_cells st_extract extractor (base-excluded, auto-discovered via DECLARED_IN_KEY='wheel_cells'). NO new plugin, NO machine_spec wiring change, NO closure change. W3 (attribution): ST1 native PayoutId space (no synth); ST2 no native payid -> single SynthesizePayIdRule pid st2 (label_format=spin_type), returned to coordinator for configs/machine_round_win_rules.json (write-race avoidance). wheel_cells.cell_count=24 DERIVED FROM THIS MACHINE'S DATA (observed max CellIndex=24; NOT copied from the 12-cell references).",
     "caveats": [
       "wheel_cells.cell_count = 24 is DATA-DERIVED from M213's own ST2 ReMarks (observed max CellIndex = 24; cells 1-18,21-24 observed, 19/20 unobserved in the 157-wheel sample). NOT the 12-cell value of the M283/M279 references -- derived per machine per feedback_no_hardcode.md. The wheel_cells extractor marks unobserved cells {prize_multiplier: null, observed: false} (honest, never interpolated); more wheels would pin 19/20. M213 ST2 also carries a WheelId selector (1/2/3; 99/51/7 of the 157 wheels) the references lack: the SAME CellIndex pays a DIFFERENT prize across WheelIds, so the wheel_cells extractor (keys on CellIndex only, WheelId-blind) correctly fires its DATA ALARM nondeterministic_cells = {2:[20,25,250], 4:[45,80], 5:[0,100], 6:[35,75], 8:[25,50,80], 10:[45,125], 11:[50,100]} and emits prize_multiplier=null for those cells (it NEVER silently picks one -- feedback_invariant_with_fallback_hides_drift.md). This is the per-(WheelId,CellIndex) PARSER-BLIND boundary, NOT a parse error: the wheel RTP is COMPLETE (the win is fully attributed to pid st2; only the per-cell prize FACE for the multi-wheel cells is null pending a per-(WheelId,CellIndex) extractor -- framework-team). M213 onboards correctly without it; the per-WheelId prize-face breakout is flagged, NOT fabricated.",
@@ -38,7 +134,9 @@
       "Single config-md5 bucket 3164e509/348af1f9 (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
       "Modes other than 1 NOT analyzed (mode-1-only onboarding). If M213 has a feature mode it is not exercised in mode 1 and MUST get its own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until coordinator gate-8 user domain sign-off (+ gate-7 render verify)."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {
@@ -51,5 +149,11 @@
     }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

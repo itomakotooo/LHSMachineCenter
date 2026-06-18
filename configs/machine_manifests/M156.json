@@ -133,8 +133,8 @@
     "note": "no round-level trigger pid; the respin (ST50, ReMarks='ReSpin', CostCredits=0) fires server-side after a base spin and chains on itself (323/543 ST50 rounds follow another ST50). Win-gating rule not in rawdata (parser_blind). Same archetype as confirmed M42/M43 WinRespin."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M156/mode_1"
@@ -148,7 +148,9 @@
       "Single config-md5 bucket 31c1051b/22049880 (single chunk chunk_0002.json, 8 robots, 40543 rounds; no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

@@ -155,7 +155,7 @@
     "note": "Single trigger path opens the NewFreespin session: scatter pid 666 on st1 = win=0 marker (279/279 occurrences immediately followed by st126; GameplayTriggerType constant 0 on all 2,810 st126 rounds). Standard episode = 10 freespins (ReMarks 'Freespin 1..10'); 2/279 episodes retriggered to 20 freespins (under-sampled, fleet M182 'retrigger observed only twice' pattern). st126 is a FREE (CostCredits=0) reel spin; ExtraRatio constant 0 in this bucket. NO no-payid settlement ST — both st1 and st126 carry native PayoutIdToWinAmount (sum(payid)==WinCredits on 42,810/42,810 rounds, 0 empty-payid wins) → NO SynthesizePayIdRule needed."
   },
   "validation": {
-    "status": "auto",
+    "status": "confirmed",
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M167/mode_1"
@@ -169,7 +169,10 @@
       "Single config-md5 bucket 64e3a258/c2aff679, single chunk; no mixed-md5 pooling concern. validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off.",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). If M167 has other modes they MUST get their own W1 + reuse pass before any reuse claim."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "user_signed_off": true,
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

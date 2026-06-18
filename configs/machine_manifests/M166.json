@@ -155,8 +155,8 @@
     "note": "Freespin episode is opened from a base ST1 spin carrying PayoutId 666 (win=0 trigger node, ReMarks empty), immediately followed by ST126 'Freespin 1; ' ... 'Freespin 7; ' (107 episodes in chunk_0002, each exactly 7 free spins -> 749 st126 rounds). GameplayTriggerType is constant 0 on every st1 and st126 round -> a SINGLE freespin path (scatter); no second discriminator value observed in mode-1 data. ST126 is FREE (CostCredits=0) and self-settling (natural PayoutIdToWinAmount -> WinCredits)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M166/mode_1"
@@ -168,7 +168,9 @@
       "High-multiplier freespin tail under-sampled on the single ~40k-round chunk (107 episodes, 749 free spins). Reported tail rates/edges are DIRECTIONAL, not precise. NOT re-fetched (cache-only).",
       "Modes other than 1 NOT analyzed (mode-1-only onboarding). Mode dirs (if any) were not opened."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

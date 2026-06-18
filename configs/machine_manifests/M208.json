@@ -158,8 +158,8 @@
     "note": "ST1 pid 666 / RewardLastNode '666-' is a win-0 marker (138/40,000 = 0.345% of paid spins, ReMarks empty) that opens the ST117 LockSymbolFreespin block DIRECTLY (predecessor of every ST117 block-start is ST1, 138/138; no intermediate Wheel ST2 on this machine). Each freespin block is exactly 12 spins. pid 666 is bijective with the ST117 blocks (138 markers -> 138 blocks, 0 orphans, 0 false triggers). M208 differs from M207 (whose ST117 is opened INDIRECTLY via the Wheel ST2 cells) -> single direct-opener trigger path here, no ST2/wheel_cells block. pid 666 is an observed OUTCOME marker, not a derivable grid rule."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M208/mode_1"
@@ -175,7 +175,8 @@
       "RTP magnitude is not an onboarding criterion (parse-correctness is). The paid unit is ST1's CostCredits (ST117 carries BetAmount=1000 at CostCredits=0 -> a BetAmount-based denominator would over-count the paid base; paid_st=[1] is correct). Per feedback_dev_ci_scope dev does not chase CI."
     ],
     "date": "2026-06-18",
-    "gate8_note": "Pending user gate-8 domain sign-off. Objective gates 1-6 verified at onboarding; gate 7 (console render) + gate 8 (domain) owned by coordinator. Fleet CurJackpotStoreWin test-interface-zeroing recorded once (no per-machine re-confirmation)."
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held.",
+    "signed_off_date": "2026-06-18"
   },
   "out_of_engine_mechanics": [
     {

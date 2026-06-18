@@ -166,8 +166,8 @@
     "note": "SINGLE trigger path opens the NewFreespin session: scatter pid 666 on the paid base st140 round (RewardLastNode '666-', win=0 marker on 358/369 episodes; the 11 with win 11110 are a co-occurring line win on the same trigger round). Every ST126 run is immediately preceded by an st140 round carrying pid 666 (369/369 episodes). Episode = a fixed 10-spin block (ReMarks 'Freespin 1;'..'Freespin 10;', each index 369 times; all 369 episodes length 10). GameplayTriggerType is constant 0 on st126 (single scatter path; M182 archetype, NOT M275's dual scatter/collect-peak split). No collect-peak / pity-timer trigger exists here: st140 CollectCount=0 on 100% of 80,000 rounds (the collect mechanic is INERT in mode 1, like M186). ExtraRatio present on st126 but =0 on 100% (inert in this mode; kept in signature for forward-compat)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M235/mode_1"
@@ -186,7 +186,9 @@
       "modes: [1] only — the only mode analyzed (mode-1-only onboarding). Other mode dirs (if present) were NOT opened; they may exercise other STs, non-zero GTT, or activate the collection/ER mechanics and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off.",
       "parser_blind (framework-team, NEVER fabricated): per-FS-index hit-cliff arc, ER ladder (ExtraRatio FIELD vs ReMarks regex), per-path session-tier distributions, st140 bonus-count near-miss ladder, the server SummaryWin session-tier taxonomy. These need the per-ST extraction accumulator (st_extract; the trigger_paths declaration's exact single-path split IS delivered via the landed generic trigger_path extractor)."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

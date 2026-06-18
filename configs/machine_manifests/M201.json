@@ -184,8 +184,8 @@
     "note": "M201 (T2, all-standard fields) emits 4 STs: ST1 paid Normal (CostCredits=1000) + ST13 free LockReSpin held-wild hold-and-respin (CostCredits=0, distinct skin, LockLines) + ST126 free NewFreespin (CostCredits=0, ExtraRatio, ReMarks='Freespin N') + ST149 CommonSelector STATE marker (bare 5-field 'Selector' beat, win=0). NewFreespin opens off ST1 scatter pid 666 (GameplayTriggerType=0). LockReSpin opens off the opening paid ST1 via the trigger_anchor_walk fallback (GameplayTriggerType=0 not a discriminator; NO CollectCount metronome on this machine so the M277 collect_peak pity path is structurally absent — single-path). EVERY win-bearing ST (ST1/ST13/ST126) carries a NATURAL PayoutIdToWinAmount (0 nonzero-win rounds with an empty payid) -> NO SynthesizePayIdRule, no fallback bucket. ST149 is win=0 (no settlement, no payid). No live-collect channel: no SymbolIndexToRewards, no CollectCount, no additive credits-collection win alongside a payline pid. CurJackpotStoreWin present on the 3 reel STs but =0 on 100% (fleet-wide test-interface zeroing)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M201/mode_1"
@@ -200,7 +200,9 @@
       "ExtraRatio present on ST126; the ER win-multiplier ladder felt-dimension is parser_blind (needs the per-ST freespin-progression extractor), NOT fabricated into the manifest. Held-wild multiplier upgrade ladder + respin run-length on ST13 are likewise parser_blind (DIRECTION §3, framework-team), NOT fabricated.",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until breaker + gate-7 render verify + user gate-8 sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

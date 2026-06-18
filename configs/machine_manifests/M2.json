@@ -70,13 +70,15 @@
     "note": "Base-game-only machine in mode 1. No granted-session / feature trigger exists: ReMarks empty on 40,000/40,000 rounds, GameplayTriggerType constant 0, FeatureWin single key 'Normal'. No trigger session structure to reconstruct. NO trigger_paths dimension (single ST, no discriminator)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M2/mode_1"
     },
-    "evidence": "st_inventory('M2',1) + parse_rounds on the real cache (chunk_0007.json, _cache_version 3 REAL, _bet 1000): single chunk, 40,000 rounds scanned. SpinType tally {1:40000} (genuinely SINGLE ST). ReMarks {\"\":40000}; GameplayTriggerType constant 0; FeatureWin single key 'Normal' (read from analysisResult, json.loads twice, 8/8 robots). st1 is role paid_spin: CostCredits=BetAmount=1000 on 100% (>0), StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present on 40,000/40,000. CurJackpotStoreWin =0 on 100% (fleet test-interface zeroing). Independent re-sum: Sigma(PayoutIdToWinAmount)==Sigma(WinCredits)==36,275,000 on the sample (no payid drift, no settlement orphan). Observed field set + presence byte-identical to confirmed single-ST-paid M70. Manifest mirrors M70.json exactly (machine-specific values only). report_engine.generate_report_from_chunks('M2',1,bet=1000): rtp_integrity_check.passed=True, NO _unattributed_* fallback bucket (share 0), manifest loads. base_hash unchanged 3ddaa183f38c before+after (manifest base-excluded). No NEW plugin, no fork: st1 STRICT-REUSE of the shared paid_spin path; role paid_spin already in KNOWN_ROLES; no role/play hook, no SynthesizePayIdRule (native PayoutId space)."
+    "evidence": "st_inventory('M2',1) + parse_rounds on the real cache (chunk_0007.json, _cache_version 3 REAL, _bet 1000): single chunk, 40,000 rounds scanned. SpinType tally {1:40000} (genuinely SINGLE ST). ReMarks {\"\":40000}; GameplayTriggerType constant 0; FeatureWin single key 'Normal' (read from analysisResult, json.loads twice, 8/8 robots). st1 is role paid_spin: CostCredits=BetAmount=1000 on 100% (>0), StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present on 40,000/40,000. CurJackpotStoreWin =0 on 100% (fleet test-interface zeroing). Independent re-sum: Sigma(PayoutIdToWinAmount)==Sigma(WinCredits)==36,275,000 on the sample (no payid drift, no settlement orphan). Observed field set + presence byte-identical to confirmed single-ST-paid M70. Manifest mirrors M70.json exactly (machine-specific values only). report_engine.generate_report_from_chunks('M2',1,bet=1000): rtp_integrity_check.passed=True, NO _unattributed_* fallback bucket (share 0), manifest loads. base_hash unchanged 3ddaa183f38c before+after (manifest base-excluded). No NEW plugin, no fork: st1 STRICT-REUSE of the shared paid_spin path; role paid_spin already in KNOWN_ROLES; no role/play hook, no SynthesizePayIdRule (native PayoutId space).",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

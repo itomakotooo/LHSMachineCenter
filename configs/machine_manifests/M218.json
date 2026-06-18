@@ -1,44 +1,173 @@
 {
   "machine_id": "M218",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "1": {
       "role": "paid_spin",
       "play": "Normal",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M218/mode_1 bucket e18faea3/b75611ef 2026-06-18 (CostCredits=1000 paid, ReelSkin=1, native payids)"
     },
     "61": {
       "role": "respin",
       "play": "UntilWinRespin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
-      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
       "observed_fields_source": "st_inventory M218/mode_1 bucket e18faea3/b75611ef 2026-06-18 (CostCredits=0 FREE, ReelSkin=11, ReMarks='respin_0', native payids — sum(payid)==WinCredits 0 residual / 7924 rounds)"
     }
   },
-  "trigger": {"payout_id": null, "remarks": "respin", "opens": "UntilWinRespin", "note": "no round-level trigger pid. UntilWinRespin (ST61) is a FREE (cost=0) win-driven server-side reel-spin extension of the triggering paid spin (ST1) — it runs in bursts on premium ReelSkin 11 and returns to ST1. ST61 carries its OWN native PayoutIdToWinAmount (sum(payid)==WinCredits exact, 0 residual), so NO payid synthesis is needed. Field-signature matches the validated respin STs (M43 ST50 WinRespin, M279 ST36 MoveSpin) -> STRICT-REUSE respin role + respin_dynamics."},
+  "trigger": {
+    "payout_id": null,
+    "remarks": "respin",
+    "opens": "UntilWinRespin",
+    "note": "no round-level trigger pid. UntilWinRespin (ST61) is a FREE (cost=0) win-driven server-side reel-spin extension of the triggering paid spin (ST1) — it runs in bursts on premium ReelSkin 11 and returns to ST1. ST61 carries its OWN native PayoutIdToWinAmount (sum(payid)==WinCredits exact, 0 residual), so NO payid synthesis is needed. Field-signature matches the validated respin STs (M43 ST50 WinRespin, M279 ST36 MoveSpin) -> STRICT-REUSE respin role + respin_dynamics."
+  },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M218/mode_1", "cross_mode": [1]},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M218/mode_1",
+      "cross_mode": [
+        1
+      ]
+    },
     "evidence": "W1 (auto-derived, single real bucket e18faea3/b75611ef, _cache_version:3, 1 chunk / 8 robots / 47924 rounds): ST1=paid_spin/Normal (CostCredits=1000, ReelSkin=1, full reel fields, native payids); ST61=respin/UntilWinRespin (CostCredits=0 FREE, ReelSkin=11, ReMarks='respin_0', full reel fields, native payids, always follows ST1 in bursts). FeatureWin taxonomy confirms plays Normal + UntilWinRespin. ST61 win-vs-payid coverage EXACT (sum(PayoutIdToWinAmount)==WinCredits, residual_rounds=0/7924) -> native payid, NO synth. NO live-collect channel (no SymbolIndexToRewards / CollectCount / CreditsSymbols anywhere; RewardLastNode is the standard symbol-node list, present on both ST1 and ST61). ST61 field signature MATCHES validated respin STs (M43 ST50 / M279 ST36) -> STRICT-REUSE respin role + respin_dynamics (ROLE_ANALYSES['respin'], already wired; no plugin / no machine_spec / no frontend change). Manifest-only onboard, base_hash unchanged. AWAITING gate 8 user domain sign-off (out-of-engine declaration).",
     "caveats": [
       "ST61 respin burst-length histogram + win-gating proof (which winning ST1 outcomes open a respin) need per-round ReMarks / run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces the base-excluded continuation/uplift metrics and flags the histogram parser_blind, same boundary as M43 ST50 / M279 ST36. Framework-team item.",
       "skin-11 boost-reel breakout (ST61 runs on ReelSkin 11) is captured pooled into ST61's multiplier distribution; an explicit per-skin LABELED breakout is parser_blind (plugin layer gets coarse per-ST histograms, not per-round ReelSkin). Framework-team item IF a labeled metric is wanted.",
       "single chunk (chunk_0002, 5000 spin_times target, 8 robots) — auto verdict derived on the one real bucket; re-verify on a re-sample / additional chunks. config-md5 e18faea3 / code-md5 b75611ef."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
-    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST61 round but =0 on 100% of 47924 in-sample records. FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): it IS a real progressive jackpot store, but the CURRENT testspin interface forces its accumulation efficiency to 0 (so the sample correctly shows 0). Parse the data as-is with the progressive contributing 0; the field is already in the ST1/ST61 signature, so parsing is FORWARD-COMPATIBLE. The data RTP is the BASE (excludes the progressive); it grows when the interface enables it.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST61 round but =0 on 100% of 47924 in-sample records. FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): it IS a real progressive jackpot store, but the CURRENT testspin interface forces its accumulation efficiency to 0 (so the sample correctly shows 0). Parse the data as-is with the progressive contributing 0; the field is already in the ST1/ST61 signature, so parsing is FORWARD-COMPATIBLE. The data RTP is the BASE (excludes the progressive); it grows when the interface enables it.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
   ],
   "round_win_rule": null,
-  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
 }

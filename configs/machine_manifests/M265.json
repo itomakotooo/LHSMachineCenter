@@ -1,15 +1,55 @@
 {
   "machine_id": "M265",
   "schema": "spintype-native/1",
-  "modes": [1],
+  "modes": [
+    1
+  ],
   "inherits_from": null,
   "spin_types": {
     "140": {
       "role": "paid_spin",
       "play": "NormalCollectionSpin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
-      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "CollectCount",
+        "AccCredits",
+        "CreditsSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "AccCredits",
+        "BetAmount",
+        "CollectCount",
+        "CostCredits",
+        "CreditsSymbols",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "SymbolIndexToRewards",
+        "WinCredits"
+      ],
       "observed_field_presence": {
         "AccCredits": 1.0,
         "BetAmount": 1.0,
@@ -39,9 +79,44 @@
     "126": {
       "role": "freespin",
       "play": "NewFreespin",
-      "economy": {"win_field": "WinCredits", "kind": "real"},
-      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "ExtraRatio", "GameplayTriggerType", "WinCredits"],
-      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "ExtraRatio", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "ExtraRatio",
+        "GameplayTriggerType",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "ExtraRatio",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
       "observed_field_presence": {
         "BetAmount": 1.0,
         "CostCredits": 1.0,
@@ -65,10 +140,22 @@
       },
       "observed_fields_source": "st_inventory M265/mode_1 bucket 32fbecbe/7fa8bc78 2026-06-18",
       "trigger_paths": {
-        "discriminator": {"kind": "single_path", "note": "Only ONE trigger path observed in M265/mode_1: the CollectCount==1000 pity-timer (collect_peak). No scatter path (pid 666 = 0 occurrences in 40,400 rounds; GameplayTriggerType constant 0 on all 400 st126 rounds, so it is NOT a discriminator here — unlike M275 where {0:scatter, 2:collect_peak}). All 40/40 NewFreespin sessions entered from an st140 with CollectCount==1000."},
-        "fallback": {"kind": "trigger_anchor_walk", "note": "CollectCount-reset entry. Single path; no un-merge needed."},
+        "discriminator": {
+          "kind": "single_path",
+          "note": "Only ONE trigger path observed in M265/mode_1: the CollectCount==1000 pity-timer (collect_peak). No scatter path (pid 666 = 0 occurrences in 40,400 rounds; GameplayTriggerType constant 0 on all 400 st126 rounds, so it is NOT a discriminator here — unlike M275 where {0:scatter, 2:collect_peak}). All 40/40 NewFreespin sessions entered from an st140 with CollectCount==1000."
+        },
+        "fallback": {
+          "kind": "trigger_anchor_walk",
+          "note": "CollectCount-reset entry. Single path; no un-merge needed."
+        },
         "paths": {
-          "collect_peak": {"opened_by": {"counter": "CollectCount", "at_peak": 1000}, "label": "collect-peak (pity timer)"}
+          "collect_peak": {
+            "opened_by": {
+              "counter": "CollectCount",
+              "at_peak": 1000
+            },
+            "label": "collect-peak (pity timer)"
+          }
         },
         "multi_trigger_policy": "additive_sessions"
       }
@@ -81,9 +168,12 @@
     "note": "ONE trigger path opens the NewFreespin 10-spin session in M265/mode_1: CollectCount==1000 (deterministic pity timer, +1 every paid st140 spin; resets to 1 after firing). 40/40 sessions entered from an st140 round with CollectCount==1000; each session is exactly 10 spins (Freespin 1..10). NO scatter / pid-666 path is present in this sample (0 occurrences in 40,400 rounds) and GameplayTriggerType is constant 0 (not a discriminator here). AccCredits==100000 (=100xCollectCount) at peak is the basis-bet input for the freespin computation (M275 precedent), never paid as credits directly. No retrigger observed."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "confirmed_against": {"mode": 1, "rawdata": "M265/mode_1"},
+    "status": "confirmed",
+    "user_signed_off": true,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M265/mode_1"
+    },
     "evidence": "st_inventory + parse_rounds M265/mode_1 (single chunk chunk_0002.json, 8 robots, 40,400 rounds, _cache_version 3 REAL, _bet 1000, single md5 bucket 32fbecbe.../7fa8bc78...): SpinType tally {140:40000, 126:400}. ST140 role paid_spin (StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present 100%, CostCredits=BetAmount=1000 100%; CollectCount metronome 1..1000, distinct 1000); signature MATCHES M275/M186 st140 (22 observed fields identical). ST126 role freespin/NewFreespin (CostCredits=0 free chain, ReMarks 'Freespin 1..10', run-length 10 on all 40 sessions, ExtraRatio constant 0); signature MATCHES M275 st126 (19 observed fields identical). Conservation: sum(PayoutIdToWinAmount)==sum(WinCredits) EXACT on BOTH STs (st140 35,127,800/35,127,800 over 40,000 rounds; st126 857,200/857,200 over 400 rounds; 0 mismatch) -> ALL win captured in NATIVE payid space, NO settlement ST without payid, NO synth rule needed. report_engine.generate_report_from_chunks: rtp_integrity_check.passed=True, NO _unattributed_* fallback bucket (share 0), manifest loads. NOT user-signed-off (validation.status='auto').",
     "caveats": [
       "T1 manifest-only onboard (exact-archetype multi-ST: st140 NormalCollectionSpin + st126 NewFreespin; same archetype as M275). STRICT-REUSE of the shared paid_spin + freespin plugins; NO new code, NO fork, NO closure change. base_hash 3ddaa183f38c unchanged before/after (manifest is base-excluded). roles paid_spin + freespin already in KNOWN_ROLES (no machine_spec wiring).",
@@ -95,7 +185,9 @@
       "Single config-md5 bucket 32fbecbe/7fa8bc78 (single chunk chunk_0002.json; no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs were not opened; they may exercise other STs (e.g. wheel/minigame/topdollar STs from the broader archetype map), non-zero GameplayTriggerType/ExtraRatio, or a scatter trigger path, and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {
@@ -109,7 +201,9 @@
   ],
   "round_win_rule": null,
   "rtp_integrity": {
-    "paid_st": [140],
+    "paid_st": [
+      140
+    ],
     "fallback_warn": 0.5,
     "fallback_fail": 5.0
   }

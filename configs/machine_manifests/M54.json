@@ -169,8 +169,8 @@
     "note": "no round-level trigger pid; both features fire server-side (st50 win-gated free respin chaining on its own win; st51 minigame settlement). EXACT M44 archetype (ST1 + ST50 + ST51). Win-gating rule not in rawdata (parser_blind)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M54/mode_1"
@@ -183,7 +183,9 @@
       "Single config-md5 bucket 45ef1448/e449b20f (single chunk; no mixed-md5 pooling concern).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). validation.status stays 'auto' until coordinator synth rule + report integrity GREEN + breaker + gate-7 render verify + user gate-8 sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

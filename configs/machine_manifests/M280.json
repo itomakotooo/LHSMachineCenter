@@ -179,8 +179,8 @@
     "note": "TWO trigger paths open the SAME NewFreespin session (M275 archetype, exact structure match): (a) scatter pid 1700 = bonus on all 3 reels (win 0 marker; 835 sessions, opened 1:1 by an ST140 carrying pid 1700); (b) CollectCount==1000 (deterministic pity timer, +1 every paid spin then reset; 80 sessions, opened 1:1 by an ST140 with CollectCount==1000). Per-round GameplayTriggerType on ST126 discriminates them perfectly (0=scatter, 2=collect-peak). ReMarks 'Freespin N' carries the FS index; 'AddFrees' retriggers extend the episode. ExtraRatio carries the per-spin freespin multiplier (100% present, varies). ReelSkin=11 on every free spin (free skin). The scatter pid value (1700) differs from M275 (666) — a single-config difference; same role/play, value-agnostic. paid_st=[140] (ST126 is CostCredits=0, free)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "confirmed_against": {
       "mode": 1,
       "rawdata": "M280/mode_1"
@@ -196,7 +196,9 @@
       "GameplayTriggerType vocabulary on ST126: only {0,2} observed in this bucket; the discriminator maps observed values only and surfaces any new value as an unknown path (signal, not residual). ST140 GTT constant 0.",
       "Single config-md5 bucket 551567f0/2fb6d57b (2 chunks, no mixed-md5 pooling concern). Modes 2/5/7 NOT analyzed (mode-1-only onboard); they may exercise other STs and MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {

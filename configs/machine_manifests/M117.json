@@ -171,9 +171,10 @@
     "note": "ST101 (paid base spin) carries the zero-pay trigger pid 666 (WinCredits=0, pid={'666':0}) on 366 rounds; every occurrence is immediately followed by ST126 freespins (366/366). ST126 self-chains (ReMarks='Freespin N') and is cost=0. Standard NewFreespin episode (mirrors M182/M165 family freespin role/play; ST101 is this machine's paid base spin instead of ST1)."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
-    "gate8_note": "Pending user gate-8 domain sign-off. Objective gates 1-7 (provenance v3, roles from real fields, base_hash unchanged, rtp_integrity, report generates, no double-count) checked by onboarding. ST101 collect-channel suspects (SymbolIndexToRewards/CollectCount/CreditsSymbols) audited and proven INERT (win conservation exact) — NOT a live-collect (T3) machine."
+    "status": "confirmed",
+    "user_signed_off": true,
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held.",
+    "signed_off_date": "2026-06-18"
   },
   "out_of_engine_mechanics": [
     {

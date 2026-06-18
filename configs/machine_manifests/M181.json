@@ -155,8 +155,8 @@
     "note": "Bonus fires via ST1 PayoutId 666 (win=0 trigger node, 397/397 episodes; GameplayTriggerType constant 0). Every pid-666 ST1 round is immediately followed by ST126 (CostCredits=0 free spins; ReMarks 'Freespin N;'). Single discriminator value (0) -> single scatter path. ST126 carries ExtraRatio (freespin marker, =0 on 100% in-sample). Mode-1-only onboarding."
   },
   "validation": {
-    "status": "auto",
-    "user_signed_off": false,
+    "status": "confirmed",
+    "user_signed_off": true,
     "evidence": "T1 exact-archetype onboard 2026-06-18 (fleet batch). Provenance: rawdata/M181/mode_1/chunk_0002.json _cache_version 3 REAL (_payload_sha256 present, _bet 1000), single config-md5 bucket e96efaf9/c2aff679. ST inventory {1:40000, 126:2793}; no other ST emitted. ST1 signature byte-matches validated paid_spin/Normal (ref M70/M137/M182); CostCredits=1000 (paid). ST126 signature byte-matches validated freespin/NewFreespin (ref M182/M275: carries ExtraRatio); CostCredits=0 (free). Economy: sum(PayoutIdToWinAmount)==WinCredits on 40000/40000 ST1 + 2793/2793 ST126 (both natural payid, no synth rule). Trigger single-path: ST1 pid 666 (win=0, 397/397) opens ST126, GameplayTriggerType=0 -> scatter. base_hash 3ddaa183f38c unchanged (manifest base-excluded).",
     "caveats": [
       "Single config-md5 bucket e96efaf9/c2aff679 (single chunk chunk_0002.json, 42793 rounds; no mixed-md5 pooling concern).",
@@ -165,7 +165,9 @@
       "High-multiplier / re-trigger tail under-sampled on the single ~42.8k chunk; reported tail rates are DIRECTIONAL not precise. NOT re-fetched (cache-only).",
       "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). Mode dirs (if present) MUST get their own W1 + reuse pass before any reuse claim. validation.status stays 'auto' until breaker + gate-7 render verify + user sign-off."
     ],
-    "date": "2026-06-18"
+    "date": "2026-06-18",
+    "signed_off_date": "2026-06-18",
+    "gate8_note": "fleet T1/T2 batch gate-8 sign-off 2026-06-18: no out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing (and M90's gift, recorded). Objective gates 1-7 pass; mechanical independent-recompute breaker held."
   },
   "out_of_engine_mechanics": [
     {
