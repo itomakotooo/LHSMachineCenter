@@ -503,6 +503,137 @@
       "applies_to": [
         "M268"
       ]
+    },
+    "m124_listrewardwheel_settlement": {
+      "_doc": "M124 ListRewardWheel (ST139) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st139. Data-driven 2026-06-18 resample re-verify: forward-compat (0-win in cached bucket). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          139
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M124"
+      ]
+    },
+    "m126_wheel_settlement": {
+      "_doc": "M126 Wheel (ST2) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st2. Data-driven 2026-06-18 resample re-verify: forward-compat (0-win in cached bucket). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M126"
+      ]
+    },
+    "m126_addfreespinwheel_settlement": {
+      "_doc": "M126 AddFreespinWheel (ST129) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st129. Data-driven 2026-06-18 resample re-verify: forward-compat (0-win in cached bucket). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          129
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M126"
+      ]
+    },
+    "m147_wheel_settlement": {
+      "_doc": "M147 Wheel (ST2) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st2. Data-driven 2026-06-18 resample re-verify: REQUIRED (paid -> _unattributed). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M147"
+      ]
+    },
+    "m163_wheel_settlement": {
+      "_doc": "M163 Wheel (ST2) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st2. Data-driven 2026-06-18 resample re-verify: REQUIRED (paid -> _unattributed). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M163"
+      ]
+    },
+    "m192_listrewardwheel_settlement": {
+      "_doc": "M192 ListRewardWheel (ST139) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st139. Data-driven 2026-06-18 resample re-verify: forward-compat (0-win in cached bucket). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          139
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M192"
+      ]
+    },
+    "m239_wheel_settlement": {
+      "_doc": "M239 Wheel (ST2) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st2. Data-driven 2026-06-18 resample re-verify: REQUIRED (paid -> _unattributed). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M239"
+      ]
+    },
+    "m282_creditssymbolrespin_settlement": {
+      "_doc": "M282 CreditsSymbolRespin (ST125) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st125. Data-driven 2026-06-18 resample re-verify: REQUIRED (paid -> _unattributed). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          125
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M282"
+      ]
+    },
+    "m47_wheel_settlement": {
+      "_doc": "M47 Wheel (ST2) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st2. Data-driven 2026-06-18 resample re-verify: forward-compat (0-win in cached bucket). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M47"
+      ]
+    },
+    "m94_wheel_settlement": {
+      "_doc": "M94 Wheel (ST2) settlement: bare WinCredits with no PayoutIdToWinAmount -> attribute each settlement round to a single real pid (label_format=spin_type) instead of leaking to _unattributed_st2. Data-driven 2026-06-18 resample re-verify: forward-compat (0-win in cached bucket). Config-only, no closure change (base_hash 3ddaa183f38c). EXACT m225/m245 precedent.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M94"
+      ]
     }
-  }
+  },
+  "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)"
 }

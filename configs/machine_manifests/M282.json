@@ -1,0 +1,188 @@
+{
+  "machine_id": "M282",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "CollectCount",
+        "AccCredits",
+        "CreditsSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "AccCredits",
+        "BetAmount",
+        "CollectCount",
+        "CostCredits",
+        "CreditsSymbols",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "SymbolIndexToRewards",
+        "WinCredits"
+      ],
+      "observed_fields_source": "st_inventory M282/mode_1 bucket 9b82cf9b/23ab5865 2026-06-18 (40,000 ST140 rows, all 22 fields 100% present). BYTE-IDENTICAL observed_fields to M126/M245/M252 NormalCollectionSpin. ECONOMY VERIFIED: WinCredits == sum(PayoutIdToWinAmount) on 40,000/40,000 rounds (0 mismatch; 5,554 win-bearing all fully payline-attributed; 0 win-with-no-payid). SymbolIndexToRewards populated and the collect metronome (CollectCount ticks, AccCredits accumulates 200/300/..., CreditsSymbols='100:1000 |') runs, but it is NOT an ADDITIVE win channel — every credited ST140 win is fully payline-attributed (sum payid == WinCredits exactly). NO _unattributed_residual / live-collect channel -> NO ABORT. M279/M278/M245 NormalCollectionSpin signature; M126 byte-identical."
+    },
+    "125": {
+      "role": "hold_respin",
+      "play": "CreditsSymbolRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "LockReels",
+        "CreditsBySymbol",
+        "SymbolIndexRatio",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CreditsBySymbol",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockReels",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "SymbolIndexRatio",
+        "SymbolIndexToRewards",
+        "WinCredits"
+      ],
+      "observed_fields_source": "st_inventory M282/mode_1 bucket 9b82cf9b/23ab5865 2026-06-18 (1,026 ST125 rows, all 22 fields 100% present). BYTE-IDENTICAL observed_fields to M245 (the field-signature match: incl. CreditsBySymbol + SymbolIndexRatio in the core signature — distinguishes M245 hold_respin from M252's leaner respin signature). ROLE=hold_respin: cost=0 FREE reel respin block with HELD reels — LockReels GROWS each respin ('4,5,7,9,' -> '4,5,7,8,9,' -> ... -> '1,3,4,5,7,8,9,' as coin symbols land and lock), ReMarks='Respin N;' (chains up to Respin 10+), shares the triggering paid ST140's SpinTimes (extension of that paid spin, NOT a new paid round; opens off the preceding ST140 on 181/181 observed chains). M278/M245 JewelFever/CreditsSymbol hold-and-respin archetype -> KNOWN_ROLES 'hold_respin' (freespin-family) wired to freespin_dynamics via ROLE_ANALYSES['hold_respin'] (already present; NO machine_spec edit). DIVERGENCE FROM M245 (cardinal rule 1 — derived from M282's OWN data, NOT mirrored blindly): M282 has NO separate ST130/ST2 settle ST — the respin block SETTLES IN-BAND on its own final ST125 round (the last 'Respin N' carries WinCredits>0 via CreditsBySymbol, e.g. 'Respin 7;' win=800 CreditsBySymbol=[400,800]). 141/1,026 ST125 rows are win-bearing (sum 121,100), all with PayoutByPayline='' and PayoutIdToWinAmount={} -> NO natural payid. NO competing payline pid on the round (0/141 additive-alongside-payline; 0 partial-payid) -> this is the CLEAN no-payid settlement case (M43-ST51 / M278-ST160 / M245-ST130 archetype), NOT a live-collect residual -> attributed by the config-only m282_creditsymbol_settlement SynthesizePayIdRule (spin_types=[125], label_format=spin_type), zeroing _unattributed_st125. Forms the CreditsSymbolRespin FeatureWin (server analysisResult)."
+    },
+    "117": {
+      "role": "freespin",
+      "play": "LockSymbolFreespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "LockSymbols",
+        "PrevLockSymbols",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockSymbols",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "PrevLockSymbols",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_fields_source": "st_inventory M282/mode_1 bucket 9b82cf9b/23ab5865 2026-06-18 (533 ST117 rows, all 20 fields 100% present). BYTE-IDENTICAL observed_fields to M114 LockSymbolFreespin (the field-signature match: incl. LockSymbols + PrevLockSymbols). ROLE=freespin: cost=0 FREE reel spin, ReMarks=' Freespin N of N' (granted bonus spins; opens AFTER the ST125 respin chain on 100% of observed chains — Respin 3/4/5/.../10 -> Freespin), pays via native paylines (PayoutByPayline + PayoutIdToWinAmount={'6':1500} etc.). ECONOMY VERIFIED: WinCredits == sum(PayoutIdToWinAmount) on 533/533 (336 win-bearing all payline-attributed; 0 win-with-no-payid) -> needs NO synthesis. M114/M183/M193/M207/M208/M222 LockSymbolFreespin signature (8-machine precedent), wired to freespin_dynamics via ROLE_ANALYSES['freespin'] (already present; NO machine_spec edit)."
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "Respin N|Freespin N of N",
+    "opens": "CreditsSymbolRespin|LockSymbolFreespin",
+    "note": "No single round-level trigger pid (ST140 nonempty ReMarks = 0/40,000). The base game is ST140 NormalCollectionSpin (paid; the collect metronome CollectCount/AccCredits/CreditsSymbols is cosmetic state, the credited win is fully payline-attributed). The CreditsSymbol hold-and-respin block (ST125) opens off the preceding paid ST140 (181/181 chains), HOLDS reels (LockReels grows each respin), cost=0 sharing the trigger's SpinTimes, settling IN-BAND on its own final ST125 round (M282 has NO separate ST130/ST2 settle — the win lands on the last 'Respin N' itself, WinCredits>0 via CreditsBySymbol, no payid). The LockSymbolFreespin block (ST117) opens AFTER the respin chain (' Freespin N of N', cost=0) and pays via native paylines (no synthesis needed). ST125's no-payid settlement win is attributed by the config-only m282_creditsymbol_settlement SynthesizePayIdRule (spin_types=[125], label_format=spin_type). CurJackpotStoreWin is present on every ST140/ST125/ST117 round but =0 on 100% of the sample (41,559/41,559 rounds; fleet-wide test-interface-zeroed progressive — M275/M279/M278/M245 precedent)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M282/mode_1"
+    },
+    "evidence": "Onboard 2026-06-18 (fleet batch, manifest-only). PROVENANCE CLEAN: 1 real v3 chunk (_cache_version:3, _payload_sha256 present, _dev_sample:true is normal dev data), single md5 bucket 9b82cf9b/23ab5865, bet=1000, no virtual chunk in the mode. ST inventory {117,125,140}. ROLES from own fields: ST140=paid_spin NormalCollectionSpin (M126/M245 byte-identical signature; WinCredits==sum(PayoutIdToWinAmount) 40,000/40,000, collect metronome cosmetic, NOT a live additive collect channel -> NO _unattributed_residual); ST125=hold_respin CreditsSymbolRespin (M245 byte-identical signature; cost=0 held-reel respin block, LockReels grows, ReMarks='Respin N;', M278/M245 hold-and-respin archetype, freespin-family role wired to freespin_dynamics with NO machine_spec edit — DIVERGES from M245 in settling IN-BAND on ST125 itself rather than a separate ST130, 141/1,026 win-bearing rows sum 121,100, no payid, CLEAN synth); ST117=freespin LockSymbolFreespin (M114 byte-identical signature; cost=0 granted freespins, native paylines, WinCredits==sum(payid) 533/533, needs NO synthesis). NO ABORT: SymbolIndexToRewards/CollectCount/CreditsSymbols are populated but carry NO additive no-payid win alongside a payline pid (every credited ST140/ST117 win is fully payline-attributed; ST125 settlement carries no competing payline pid, so the synth is CLEAN, not a residual). ZERO new plugins, ZERO machine_spec edits (every role/play already wired: paid_spin/hold_respin/freespin roles + freespin_dynamics). Attribution = config-only m282_creditsymbol_settlement SynthesizePayIdRule (spin_types=[125]) — coordinator writes the rule to configs/machine_round_win_rules.json. validation:auto pending the synth rule + gate-8 user domain sign-off.",
+    "caveats": [
+      "modes: [1] only — the only mode with cached rawdata. Extend on data, never by assumption (M43/M279/M275/M278 cross-mode pattern).",
+      "NEEDS_SYNTH: ST125 settles IN-BAND with a no-payid win (141/1,026 win rows, sum 121,100). Until the m282_creditsymbol_settlement SynthesizePayIdRule (spin_types=[125], label_format=spin_type) is written to configs/machine_round_win_rules.json by the coordinator, the report will show _unattributed_st125 and rtp_integrity layer-2 will flag it. round_win_rule is null in this manifest (config-only attribution rule is the coordinator's to add — round_win_rules.json is a closure file the implementer must not edit).",
+      "Single 8-robot dev chunk (40,000 ST140 / 1,026 ST125 / 533 ST117 rows). The structure is value-agnostic; larger samples will surface more respin/freespin prize bands. ST125 settlement win 121,100 in-sample.",
+      "PARSER-BLIND (framework-team, NEVER fabricated): ST125 LockReels growth curve / per-respin run-length, ST125 CreditsBySymbol per-symbol collect map, ST117 LockSymbols/PrevLockSymbols sticky-symbol map — all need per-round ReMarks/run-length accumulation in the per-ST extraction layer. freespin_dynamics (hold_respin + freespin) + the PER_SPINTYPE plugins surface every base-derivable metric and flag these parser_blind. Same boundary as M278/M245/M279.",
+      "PROVENANCE: evidence derives from the single md5 bucket 9b82cf9b (per-mode); structure claims are value-agnostic, every NUMBER belongs to that bucket. Any SERVED report must go through the md5-scoped generate path and be stamped with the chunk md5s."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' present on every ST140/ST125/ST117 round but =0 on 100% of the in-sample records (41,559/41,559). The fleet-wide pattern (user-confirmed 2026-06-12 on M275, gate-8): a real progressive jackpot store that the CURRENT testspin interface forces to 0; the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the ST signatures, so parsing is FORWARD-COMPATIBLE — when the interface populates it, the parser picks it up unchanged. The reported RTP is the BASE RTP (excludes the progressive). Declaration-based out-of-engine protocol (gate-8): nothing else is declared for M282, so nothing else is presumed hidden until user sign-off.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      140
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

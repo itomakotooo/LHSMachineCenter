@@ -1,0 +1,45 @@
+{
+  "machine_id": "M46",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "60": {
+      "role": "paid_spin",
+      "play": "UntilWinNormalSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M46/mode_1 bucket e6fdaeec/032cfb27 2026-06-18 (CostCredits=1000 paid, ReelSkin=1, GameplayTriggerType=0, ReMarks='', native payids — sum(payid)==WinCredits exact, 0 residual / 40000 rounds; the respin trigger is the native pid 666 paying 0 credits on the triggering ST60). Field-signature MATCHES the validated paid_spin reel STs."
+    },
+    "61": {
+      "role": "respin",
+      "play": "UntilWinRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M46/mode_1 bucket e6fdaeec/032cfb27 2026-06-18 (CostCredits=0 FREE, ReelSkin=2, GameplayTriggerType=0, ReMarks='respin_1..respin_N' burst counter — observed up to respin_20+, monotonically decreasing burst-length distribution; native payids — sum(payid)==WinCredits exact, 0 residual / 7843 rounds; shares the triggering ST60's SpinTimes; FeatureWin==UntilWinRespin). Field-signature MATCHES the validated respin STs (M43 ST50 WinRespin, M279 ST36 MoveSpin, M58 ST61 / M218 ST61 UntilWinRespin)."
+    }
+  },
+  "trigger": {"payout_id": "666", "remarks": "respin", "opens": "UntilWinRespin", "note": "Respin trigger = native pid 666 paying 0 credits on the triggering paid spin (ST60) — opens the UntilWinRespin block. UntilWinRespin (ST61) is a FREE (cost=0) win-driven server-side reel-spin extension of the triggering paid spin (ST60): it shares the triggering paid spin's SpinTimes, runs in bursts on premium ReelSkin 2 (ReMarks 'respin_1'..'respin_N' burst counter), and returns to ST60. ST61 carries its OWN native PayoutIdToWinAmount (sum(payid)==WinCredits exact, 0 residual), so NO payid synthesis is needed. Field-signature matches the validated respin STs (M43 ST50, M279 ST36, M58 ST61, M218 ST61) -> STRICT-REUSE respin role + respin_dynamics (ROLE_ANALYSES['respin'], already wired; no plugin / no machine_spec / no frontend change). EXACT M58 precedent."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M46/mode_1", "cross_mode": [1]},
+    "evidence": "W1 (auto-derived, single real bucket config-md5 e6fdaeec1ed432618d03cde9323d7db2 / code-md5 032cfb2751ddce840c6a4b28a70ffe81, _cache_version:3 real [NOT virtual], 1 chunk / 8 robots / 47843 rounds): ST60=paid_spin/UntilWinNormalSpin (CostCredits=1000, ReelSkin=1, GameplayTriggerType=0, ReMarks='', full reel fields, native payids; respin trigger = native pid 666 paying 0 credits); ST61=respin/UntilWinRespin (CostCredits=0 FREE, ReelSkin=2, ReMarks='respin_1'..'respin_N' burst counter, full reel fields, native payids, always follows ST60 in bursts sharing the triggering paid spin's SpinTimes). Server FeatureWin taxonomy confirms plays UntilWinNormalSpin + UntilWinRespin, and the HARD economy invariant holds EXACTLY per robot: sum(round WinCredits) == sum(server FeatureWin taxonomy WinCredits) (35,201,000 == 35,201,000 over 8 robots; 0 orphan/unattributed win). Both STs' win-vs-payid coverage EXACT (sum(PayoutIdToWinAmount)==WinCredits, residual_rounds=0/40000 + 0/7843) -> native payid, NO synth (round_win_rule null). NO live-collect channel (no SymbolIndexToRewards / CollectCount / CreditsSymbols / AccCredits anywhere; RewardLastNode is the standard symbol-node list '9-'). ST61 field signature MATCHES the validated respin STs (M43 ST50 / M279 ST36 / M58 ST61 / M218 ST61) -> STRICT-REUSE respin role + respin_dynamics (already wired; manifest-only). Manifest-only onboard, base_hash 3ddaa183f38c expected unchanged. AWAITING gate 8 user domain sign-off (out-of-engine declaration).",
+    "caveats": [
+      "ST61 respin burst-length histogram + win-gating proof (which winning ST60 outcomes open a respin) need per-round ReMarks / run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces the base-excluded continuation/uplift metrics and flags the histogram parser_blind, same boundary as M43 ST50 / M279 ST36 / M58 ST61 / M218 ST61. Framework-team item.",
+      "skin-2 boost-reel breakout (ST61 runs on ReelSkin 2) is captured pooled into ST61's multiplier distribution; an explicit per-skin LABELED breakout is parser_blind (plugin layer gets coarse per-ST histograms, not per-round ReelSkin). Framework-team item IF a labeled metric is wanted.",
+      "single chunk (chunk_0002, 5000 spin_times target, 8 robots, 47843 rounds) — auto verdict derived on the one real bucket; re-verify on a re-sample / additional chunks. config-md5 e6fdaeec / code-md5 032cfb27.",
+      "ENVIRONMENT NOTE (this onboard session): no Python interpreter was available on the machine, so the Python-dependent gates (base_hash recompute, extract_st_inventory, report_engine.generate_report_from_chunks smoke) could NOT be executed in-session. The ST inventory, field signatures, economy invariant, native-payid coverage, and no-live-collect proof above were derived by directly parsing the rawdata chunk (PowerShell JSON, replicating st_inventory's parse_rounds logic). base_hash before/after is unverifiable in-session but the change set is manifest-only (a single base-EXCLUDED configs/machine_manifests/M46.json), which CANNOT touch the closure -> base_hash MUST remain 3ddaa183f38c. Coordinator should run the base_hash + report_engine smoke gates where a Python interpreter is present."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST60/ST61 round but =0 on 100% of 47843 in-sample records. FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): it IS a real progressive jackpot store, but the CURRENT testspin interface forces its accumulation efficiency to 0 (so the sample correctly shows 0). Parse the data as-is with the progressive contributing 0; the field is already in the ST60/ST61 signature, so parsing is FORWARD-COMPATIBLE. The data RTP is the BASE (excludes the progressive); it grows when the interface enables it.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [60], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

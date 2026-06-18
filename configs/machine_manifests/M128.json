@@ -1,0 +1,53 @@
+{
+  "machine_id": "M128",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "60": {
+      "role": "paid_spin",
+      "play": "UntilWinNormalSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M128/mode_1 bucket 41ecbe13/8b39f220 2026-06-18 (CostCredits=1000 PAID, ReelSkin=1, GameplayTriggerType=0, ReMarks='', full reel fields, native payids — sum(payid)==WinCredits exact 9827/9827 present, 0 residual / 40000 rounds; sum(WinCredits) 17,924,460 == server FeatureWin['UntilWinNormalSpin'] exact). Field-signature-matches the validated ST60 paid_spin/UntilWinNormalSpin (M58/M218) -> STRICT-REUSE paid_spin role + generic per-ST plugins, no new code."
+    },
+    "31": {
+      "role": "respin",
+      "play": "ReSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M128/mode_1 bucket 41ecbe13/8b39f220 2026-06-18 (CostCredits=0 FREE, ReelSkin=9, GameplayTriggerType=0, ReMarks='ReSpin', full reel fields, native payids — sum(payid)==WinCredits exact 1024/1024 present, 0 residual / 2327 rounds; sum(WinCredits) 8,858,340 == server FeatureWin['ReSpin'] exact; follows ST60 in the sequence, returns to ST60). Field-signature-matches the validated ST31 respin/ReSpin (M174/M25/M61) and the respin archetype (M43 ST50 / M279 ST36) -> STRICT-REUSE respin role + respin_dynamics (ROLE_ANALYSES['respin'], already wired). NO payid synthesis (own native payids)."
+    },
+    "61": {
+      "role": "respin",
+      "play": "UntilWinRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M128/mode_1 bucket 41ecbe13/8b39f220 2026-06-18 (CostCredits=0 FREE, ReelSkin=8, GameplayTriggerType=0, ReMarks='respin_0' burst counter, full reel fields, native payids — sum(payid)==WinCredits exact 622/622 present, 0 residual / 1452 rounds; sum(WinCredits) 5,520,780 == server FeatureWin['UntilWinRespin'] exact; runs in bursts off ST60, returns to ST60). Field-signature-matches the validated ST61 respin/UntilWinRespin (M58/M218) -> STRICT-REUSE respin role + respin_dynamics (ROLE_ANALYSES['respin'], already wired). NO payid synthesis (own native payids)."
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "respin", "opens": "ReSpin/UntilWinRespin", "note": "No round-level trigger pid. M128 = a paid base spin (ST60 UntilWinNormalSpin) with TWO free (cost=0) win-driven server-side reel-spin extensions: ST31 ReSpin (ReelSkin 9, ReMarks 'ReSpin') and ST61 UntilWinRespin (ReelSkin 8, ReMarks 'respin_0..N' burst counter). Both extensions carry their OWN native PayoutIdToWinAmount (sum(payid)==WinCredits exact, 0 residual on every round) -> NO payid synthesis needed. Both field-signatures match the validated respin STs (M174/M25/M61 ST31 ReSpin; M58/M218 ST61 UntilWinRespin; M43 ST50; M279 ST36) -> STRICT-REUSE respin role + respin_dynamics (ROLE_ANALYSES['respin'], already wired; manifest-only, no plugin / no machine_spec / no frontend change). Sequence: ST60->ST31->ST60 (1739/1815) and ST60->ST61->ST60 (577/501) bursts confirm both are extensions of the paid spin."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M128/mode_1", "cross_mode": [1]},
+    "evidence": "Provenance clean: chunk_0001 _cache_version:3 (real; _dev_sample:true is the dev-sampling marker, NOT the virtual v2 marker), single config-md5 bucket 41ecbe13e503304462f37d916bc49241 / code_md5 8b39f2208cc74dab95fc86ed16b0eb91, 1 chunk / 8 robots / 43779 rounds. THREE SpinTypes, all derived from THIS machine's OWN fields: ST60 = paid_spin/UntilWinNormalSpin (CostCredits=1000 paid, ReelSkin=1, ReMarks='', full reel fields, native payids); ST31 = respin/ReSpin (CostCredits=0 FREE, ReelSkin=9, ReMarks='ReSpin', full reel fields, native payids); ST61 = respin/UntilWinRespin (CostCredits=0 FREE, ReelSkin=8, ReMarks='respin_0' burst counter, full reel fields, native payids). Server FeatureWin taxonomy (analysisResult) carries EXACTLY three plays — UntilWinNormalSpin + ReSpin + UntilWinRespin — and per-ST sum(WinCredits) reconciles EXACTLY to each FeatureWin total (ST60 17,924,460==UntilWinNormalSpin; ST31 8,858,340==ReSpin; ST61 5,520,780==UntilWinRespin). Win-vs-payid coverage EXACT on all three STs (sum(PayoutIdToWinAmount)==WinCredits, residual_rounds=0/40000 + 0/2327 + 0/1452) -> native payid, NO synth. NO live-collect channel anywhere (SymbolIndexToRewards / CollectCount / CreditsSymbols all absent; RewardLastNode is the standard symbol-node list). CurJackpotStoreWin present but 0 on 100% (fleet test-interface-zeroed). Both respin STs' field signatures MATCH the validated respin STs -> STRICT-REUSE respin role + respin_dynamics (already wired via ROLE_ANALYSES; manifest-only). Manifest-only onboard, base_hash 3ddaa183f38c unchanged. AWAITING gate 8 user domain sign-off (out-of-engine declaration).",
+    "caveats": [
+      "ST31/ST61 respin burst-length histograms + win-gating proof (which winning ST60 outcomes open a respin) need per-round ReMarks / run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces the base-excluded continuation/uplift metrics and flags the histogram parser_blind, same boundary as M43 ST50 / M279 ST36 / M58/M218 ST61. Framework-team item.",
+      "boost-reel breakout (ST31 runs on ReelSkin 9, ST61 on ReelSkin 8) is captured pooled into each respin ST's multiplier distribution; an explicit per-skin LABELED breakout is parser_blind (plugin layer gets coarse per-ST histograms, not per-round ReelSkin). Framework-team item IF a labeled metric is wanted.",
+      "single chunk (chunk_0001, 5000 spin_times target, 8 robots, 43779 rounds) — auto verdict derived on the one real bucket; re-verify on a re-sample / additional chunks. config-md5 41ecbe13 / code-md5 8b39f220."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive store", "desc": "A real in-engine progressive jackpot store field present on every ST60/ST31/ST61 round but forced to 0 by the current testspin interface (0 on 100% of 43779 in-sample records). FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): the CURRENT testspin interface forces its accumulation efficiency to 0 (so the sample correctly shows 0). Parse as-is (contributes 0 now); the field is already in every ST signature so parsing is FORWARD-COMPATIBLE when the interface later populates it. The data RTP is the BASE (excludes the progressive); it grows when the interface enables it.", "rtp_impact": true, "rtp_impact_current": 0, "source": "fleet-wide test-interface behavior (user-confirmed 2026-06-12, M275 gate 8 — record once per machine, no per-machine re-confirmation)", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [60], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

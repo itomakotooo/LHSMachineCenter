@@ -1,0 +1,162 @@
+{
+  "machine_id": "M47",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "74": {
+      "role": "paid_spin",
+      "play": "GoldenDiceLockSpin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "LockSymbols",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockSymbols",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "LockSymbols": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M47/mode_1 bucket f3bad977/f2786308 2026-06-18",
+      "note": "The base PAID reel spin of M47 (BetAmount=1000, CostCredits=1000 on 40,000/40,000) with NATURAL payline payids (WinCredits==sum(PayoutIdToWinAmount) on 40,000/40,000, residual 0 -> NOT a live-collect channel) and per-ST sum(WinCredits) 26,584,200 == server analysisResult SummaryWin['GoldenDiceLockSpin'] 26,584,200 EXACT, hence play 'GoldenDiceLockSpin' (the literal FeatureWin/SummaryWin key carrying the base-game win; server TotalWin keyed 'Normal' = 34,693,700 = ST74 26,584,200 + ST2 8,109,500 exact). STANDARD-FIELD paid_spin: role derived from own fields (cost>0 + reel StopSymbolsByCol + PayoutByPayline/PayoutIdToWinAmount), NOT from a diff against a known machine. STRICT-REUSE the generic CROSS_CUTTING + PER_SPINTYPE plugins (no new plugin; no ROLE_ANALYSES/PLAY_ANALYSES hook for this play -> a clean generic base game). LockSymbols + RewardLastNode are the GoldenDice lock visual WITHIN the paid spin (the same OPTIONAL paid_spin lock field carried by M104/M240 ST96 LockSymbolSpin; key present on 40,000/40,000, populated on a 2,839/40,000 subset) -> a feature signal, NOT a shape change and NOT a novel mechanic (no new role/plugin). NO collect-coin signature (no CollectCount/AccCredits/CreditsSymbols/SymbolIndexToRewards/BuffCollectionMap on ST74) -> not a collect machine. CurJackpotStoreWin present=0 on 40,000/40,000 (fleet-wide test-interface-zeroed; kept in observed_fields for forward-compatibility, see out_of_engine_mechanics)."
+    },
+    "2": {
+      "role": "settlement",
+      "play": "Wheel",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "SpinType",
+        "SpinTimes",
+        "RTPId",
+        "WinCredits",
+        "ReMarks",
+        "StopSymbolsByCol",
+        "IsLackCreditsSpin",
+        "LastCredits"
+      ],
+      "observed_fields": [
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "RTPId",
+        "ReMarks",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M47/mode_1 bucket f3bad977/f2786308 2026-06-18",
+      "wheel_cells": {
+        "spin_type": 2,
+        "remarks_field": "ReMarks",
+        "cell_pattern": "CellIndex\\s+(\\d+)",
+        "cell_count": 16,
+        "prize_basis": "win_over_bet"
+      },
+      "note": "EXACT field-signature match to the validated M279/M283/M225/M147 ST2 Wheel collect settlement: bare WinCredits (>0 on 2,108/2,108), NO PayoutIdToWinAmount and NO PayoutByPayline alongside (no payline pid -> a CLEAN synth, NOT a residual), NO BetAmount, ReMarks='WheelSpin CellIndex N;' (CellIndex 1..15 observed -> cell_count=16 records the observed-distinct landing span 0-based; widen on more data). STRICT-REUSE settlement role + play 'Wheel' -> wheel_dynamics (already wired in PLAY_ANALYSES['Wheel']) + its frontend _stDimWheel dimension (already shipped with M279) -> NO new plugin and NO new frontend dimension. The wheel PAYS in this bucket (sum WinCredits 8,109,500 == server analysisResult SummaryWin['Wheel'] 8,109,500 EXACT, ~23% of total payback 34,693,700) so the m47_wheel_settlement SynthesizePayIdRule is REQUIRED (not just forward-compat) to mint a single real pid 'st2' and zero _unattributed_st2 (EXACT M279/M283/M147 precedent). The per-round CellIndex landing map + per-cell prize shape are parser_blind (per-ST extraction accumulator, framework-team)."
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "WheelSpin",
+    "opens": "Wheel",
+    "note": "No round-level numeric trigger pid for the wheel win. ST74 GoldenDiceLockSpin is the base PAID reel spin (LockSymbols/RewardLastNode GoldenDice lock); the Wheel (ST2) is the collect settlement that fires and settles via WinCredits (NOT a payid scatter), attributed by the m47_wheel_settlement rule (M279/M147 collect/wheel precedent). StartMinigame and FinalMinigame appear as server SummaryWin feature keys but pay 0 and emit no STs in this mode_1 sample (dormant features; record on data, never by assumption)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M47/mode_1"
+    },
+    "evidence": "fleet batch onboarding 2026-06-18 (manifest-only, NO new code). W1 PROVENANCE: mode_1 = 1 real chunk on disk (chunk_0002.json, _cache_version 3 -> real not virtual), single config_md5 bucket f3bad977795c0b7dfffcd448a31d5457 / code_md5 f2786308a0b4644589241ac1a5ab228d; 42,108 rounds across 8 robots; 2 STs {74, 2}. ST roles derived from own fields (paid_spin: cost>0 + reel; settlement: bare WinCredits no reel-pid). ECONOMY (server analysisResult cross-checked, json.loads twice): per-ST sum(WinCredits) == server SummaryWin per play EXACT -- ST74 26,584,200 == 'GoldenDiceLockSpin'; ST2 8,109,500 == 'Wheel'; server TotalWin('Normal') 34,693,700 == ST74+ST2. RESIDUAL CHECK PASSED: ST74 WinCredits==sum(PayoutIdToWinAmount) on 40,000/40,000 (residual 0) -> NO additive no-payid coin channel -> NOT a live-collect T3 ABORT. NO collect-coin fields on ST74 (no CollectCount/AccCredits/CreditsSymbols/SymbolIndexToRewards). CurJackpotStoreWin present=0 on 40,000/40,000 ST74 (test-interface-zeroed). REUSE: ST74=paid_spin/GoldenDiceLockSpin (standard reel+payline fields, generic PER_SPINTYPE, no new plugin, in paid_st=[74]); ST2=settlement/Wheel (EXACT signature-match M279/M283/M225/M147, strict-reuse wheel_dynamics + m47_wheel_settlement synth REQUIRED because the wheel pays 8.1M ~23% of payback). base_hash unchanged (3ddaa183f38c before == after; manifest + synth-rule config + no machine_spec/frontend change -> all base-excluded). validation.status=auto pending gate-8 user domain sign-off.",
+    "caveats": [
+      "Single mode_1 chunk on disk (chunk_0002.json; sidecar _chunks.json may list chunk_0001.json but it is not present on disk), single config_md5 bucket (f3bad977.../f2786308...): structure claims are value-agnostic; every NUMBER belongs to this bucket. Any served report must go through the md5-scoped generate path and be stamped with the chunk md5s.",
+      "ST74 carries LockSymbols (key on 40,000/40,000, populated on a 2,839/40,000 subset) + RewardLastNode = the GoldenDice lock mechanic within the paid spin. The win is fully payline-attributed in this bucket (WinCredits==sum(PayoutIdToWinAmount) 40,000/40,000). The per-round lock-symbol map / RewardLastNode reward-node ladder are parser_blind (per-ST extraction accumulator, framework-team); the generic per-ST plugins surface the base-game multiplier distribution, not the lock-state breakout.",
+      "ST2 wheel CellIndex landing map (CellIndex 1..15 observed) + per-cell prize shape are parser_blind (per-round ReMarks CellIndex accumulator needed -- same boundary as M279/M147/M225). cell_count=16 records the observed-distinct landing span (0..15), not a fixed wheel size; widen on more data. Framework-team item.",
+      "Server SummaryWin lists feature keys 'StartMinigame' and 'FinalMinigame' that pay 0 and emit NO STs in this mode_1 sample -> dormant features not modeled here. If a future mode/bucket activates them (their own STs appear), re-onboard those STs from their own fields (M43/M279 cross-mode pattern). modes: [1] only -- the only mode with cached rawdata at this pass.",
+      "round_win_rule m47_wheel_settlement (synthesize_pay_id, spin_types=[2], label_format=spin_type) must be added to configs/machine_round_win_rules.json by the coordinator (returned in synth_rules); without it the 8.1M wheel win lands in _unattributed_st2 and rtp_integrity FAILS. status=needs_synth."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Present on every ST74 round (absent on ST2) and =0 on 100% of 40,000 in-sample records. Fleet-wide test-interface behavior (user-confirmed 2026-06-12 during M275 gate 8): a real progressive jackpot store whose accumulation the CURRENT testspin interface forces to 0. Parse-as-is at 0; the field is in the ST74 observed_fields so parsing is FORWARD-COMPATIBLE when the interface populates it. The data RTP is the BASE RTP (excludes the progressive); it grows when the field is enabled.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": "m47_wheel_settlement (synthesize_pay_id, spin_types=[2], label_format=spin_type) -- to be added to configs/machine_round_win_rules.json by coordinator (returned in synth_rules). EXACT M279/M283/M225/M147 precedent. REQUIRED (not forward-compat): the wheel pays 8,109,500 (~23% of payback) in this bucket; mints real pid 'st2' to zero _unattributed_st2.",
+  "rtp_integrity": {
+    "paid_st": [
+      74
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

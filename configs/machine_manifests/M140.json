@@ -1,0 +1,171 @@
+{
+  "machine_id": "M140",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "35": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M140/mode_1 bucket 2e25910a/1a97515d 2026-06-18"
+    },
+    "36": {
+      "role": "respin",
+      "play": "MoveSpin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M140/mode_1 bucket 2e25910a/1a97515d 2026-06-18"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "trigger|move",
+    "opens": "MoveSpin",
+    "note": "no round-level trigger pid; the move lock fires server-side via the wild-nudge respin postprocessor (ST35 ReMarks='trigger' 1111 rounds -> ST36 ReMarks='move' 1638 rounds, cost=0). Same null-pid win-gated continuation shape as M149/M43; respin shares the triggering paid spin's SpinTimes. Signature twin of M149."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M140/mode_1",
+      "cross_mode": []
+    },
+    "evidence": "st_inventory M140/mode_1 (single cache_version:3 real chunk, bucket 2e25910a/1a97515d, 41638 ST35+ST36 rounds; _dev_sample None -> provenance clean, not virtual). ST roles from real 18-field core: ST35=paid_spin (CostCredits=1000>0, standard reel fields, natural payids); ST36=respin (CostCredits=0, ReMarks='move' 100%, standard reel fields, natural payids). EXACT field-signature match to confirmed M149 (same 18 fields, same ST35 Normal / ST36 MoveSpin shapes, same trigger topology) -> strict-reuse the shared per-ST plugins (no new code) + respin_dynamics via the respin role. Economy invariant: sum(round WinCredits) ST35 22,684,684 + ST36 11,734,605 = 34,419,289; sum(payid)==WinCredits on 41638/41638 rounds (0 mismatches) -> zero no-payid settlements, NO SynthesizePayIdRule (M149 precedent). No collect-coin danger fields (SymbolIndexToRewards/CollectCount/CreditsSymbols ABSENT) -> not a live-collect channel. pid 10001 (special-symbol payid) co-sums into WinCredits with payline pids, fully attributed (no additive no-payid residual).",
+    "caveats": [
+      "CurJackpotStoreWin present 100% but test-interface-zeroed (0 on all 41638 rounds) — fleet-wide test-interface behavior, parse-as-is forward-compatible, NOT a per-machine question (recorded once in out_of_engine_mechanics).",
+      "Single ~40k chunk: under-sampled tails (pid 10001 nonzero n=545, ST35 'trigger' rounds n=1111, ST36 move rounds n=1638) — rates noisy, FLAGGED not re-fetched.",
+      "Modes other than 1 not cached; whether they add STs or only change config VALUES undetermined.",
+      "Move-lock 'until lose' stopping rule + respin burst-length histogram are per-round run-length accumulations living in the parser (base-closure) — respin_dynamics surfaces base-excluded continuation metrics and flags the histogram parser_blind. Framework-team item.",
+      "validation.status=auto pending user gate-8 domain sign-off (no out-of-engine mechanic declared beyond fleet CurJackpotStoreWin zeroing)."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST35/ST36 round but =0 on 100% of the in-sample records. Fleet-wide test-interface behavior (user-confirmed for the fleet 2026-06-12): a real progressive jackpot store whose accumulation the CURRENT testspin interface forces to 0. Parse as-is contributing 0; the field is already in both STs' signatures so parsing is FORWARD-COMPATIBLE. The data RTP is the BASE (excludes the progressive); the progressive ADDS on top once the interface enables it.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      35
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

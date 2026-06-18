@@ -1,0 +1,174 @@
+{
+  "machine_id": "M96",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "85": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockReels",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "LockReels": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M96/mode_1 bucket 8f5b76b3/4c03f461 2026-06-18"
+    },
+    "86": {
+      "role": "freespin",
+      "play": "LockFreespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockReels",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "LockReels": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M96/mode_1 bucket 8f5b76b3/4c03f461 2026-06-18"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "Trigger",
+    "opens": "LockFreespin",
+    "note": "ST85 (paid base reel spin, skin 1) triggers the LockFreespin feature via ReMarks='Trigger' (294/40000 in-sample). ST86 is the granted free reel spin (skin 2, ReMarks='FreeSpin' x2123; re-trigger 'TriggerAddFreeSpin' x566 grants additional free spins). CostCredits=1000 is a per-record ECHO, not an actual deduction: ST86 shares the SAME SpinTimes group as its triggering ST85 (e.g. SpinTimes=33 across the Trigger spin + all following ST86 rounds) and LastCredits only INCREASES (wins) across the free-spin sequence, never decreases — the payment unit is the SpinTimes group, not the record (M104 echo pattern). Both STs settle via their NATIVE PayoutIdToWinAmount payids — sum(payid)==WinCredits on EVERY win round (10819/10819 ST85, 2121/2121 ST86) — no synthesized pid needed. No live collect channel: SymbolIndexToRewards/CollectCount/CreditsSymbols all absent; RewardLastNode is a payline-node list (e.g. ['29-'], ['27-']) mirroring the payid keys, NOT a ticking collect counter. Server FeatureWin taxonomy = {LockFreespinNormal (base contribution), LockFreespin (feature)}; LockReels field present (1.0) but empty in-sample."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M96/mode_1"
+    },
+    "evidence": "W1+W4 (onboard-implementer, 2026-06-18; 40000 ST85 + 2689 ST86 rounds across 1 real _cache_version:3 chunk chunk_0002, 8 robots, single config bucket 8f5b76b3/4c03f461, _bet=1000): ST inventory = 2 SpinTypes, both STANDARD full-reel signature (StopSymbolsByCol+PayoutByPayline+PayoutIdToWinAmount+RewardLastNode+ReelSkin+ReMarks+WinCredits, all 18 observed fields present 1.0 on both). Field-signature MATCH with the confirmed-archetype sibling M95 (identical 2-ST topology: paid base + free reel spin, identical 18-field schema, both settle natively). STRICT-REUSE of the generic per-ST plugins: ST85 role=paid_spin/Normal (CostCredits=1000, GameplayTriggerType=0 on 100%, ReMarks empty x39706 except 'Trigger' x294 -> opens LockFreespin); ST86 role=freespin/LockFreespin (granted free reel spin on skin 2, CostCredits=1000 is a per-record echo only — same SpinTimes group as the triggering ST85, LastCredits monotonically non-decreasing across the free sequence; ReMarks='FreeSpin' x2123 / 'TriggerAddFreeSpin' x566 re-trigger). FeatureWin taxonomy = {LockFreespinNormal, LockFreespin}. NO live-collect channel (SymbolIndexToRewards/CollectCount/CreditsSymbols absent on 100%); RewardLastNode is a payline-node list mirroring payid keys, NOT a ticking collect counter. EVERY win round carries a populated native PayoutIdToWinAmount with sum(payid)==WinCredits -> ZERO win-without-payid (0/10819 ST85, 0/2121 ST86) -> no additive collect residual, no _unattributed_residual. CurJackpotStoreWin present on 100% of rounds but =0 on 100% (test-interface-zeroed, fleet-wide behavior). Both STs supportable manifest-only via the generic PER_SPINTYPE plugins (paid_spin) + the existing freespin_dynamics plugin (freespin role, already validated/wired). NO new plugin, NO synth rule, NO wiring change, NO frontend dimension change (freespin role + _stDim already in framework). rtp_integrity.paid_st=[85] (ST86 is a free spin -> excluded from the RTP denominator despite its CostCredits echo). Awaiting onboard-tester + breaker + user domain sign-off (gate 8).",
+    "caveats": [
+      "ST86 freespin per-round retrigger-depth / free-spin-count histogram (how many TriggerAddFreeSpin extensions per feature entry) needs per-round sequence accumulation in parser.py (base-closure) — freespin_dynamics surfaces the base-excluded aggregate; the depth histogram is parser_blind. Framework-team item (same per-ST-extraction boundary as M43 minigame node-list).",
+      "Per-skin (ReelSkin 1 vs 2) labeled breakout is parser_blind: the plugin layer receives coarse per-ST RETURN_BUCKET histograms, not per-round ReelSkin (same boundary as M279 skin-11). The skin's CONTRIBUTION is captured (pooled into the per-ST multiplier distribution). Framework-team item IF a labeled per-skin metric is wanted."
+    ],
+    "date": "2026-06-18",
+    "signed_off_date": null,
+    "gate8_note": "fleet batch: pending objective gates 1-7 + mechanical independent-recompute breaker + user gate-8 sign-off. No out-of-engine mechanics declared beyond the fleet CurJackpotStoreWin test-interface-zeroing."
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST85/ST86 round but =0 on 100% of in-sample records (42689/42689). FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): a real progressive jackpot store whose accumulation efficiency the CURRENT testspin interface forces to 0 (so the sample correctly shows 0). Parse as-is with the progressive contributing 0; the field is already in the ST85/ST86 signature, so parsing is FORWARD-COMPATIBLE — when the test interface is optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE RTP (excludes the progressive); the progressive ADDS on top once the interface enables it.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      85
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

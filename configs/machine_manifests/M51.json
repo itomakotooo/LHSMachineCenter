@@ -1,0 +1,43 @@
+{
+  "machine_id": "M51",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "35": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M51/mode_1 bucket 40e56dde/1a975157 2026-06-18 (40000 ST35 rounds; cost=1000 paid reel spin; natural PayoutIdToWinAmount on 6803; ReMarks ''|'trigger', 4739 'trigger' rounds each open an ST36 move)"
+    },
+    "36": {
+      "role": "respin",
+      "play": "MoveSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M51/mode_1 bucket 40e56dde/1a975157 2026-06-18 (7044 ST36 rounds; cost=0 FREE wild-nudge re-spin; ReMarks='move'; natural PayoutIdToWinAmount on 2043; predecessors = ST35 'trigger' opener (4739) or chained ST36 'move' (2305) = multi-move burst. Field-signature match to M279 ST36 respin/MoveSpin -> STRICT-REUSE)"
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "trigger|move", "opens": "MoveSpin", "note": "no round-level trigger pid. The paid ST35 'trigger' round (ReMarks='trigger') opens a MoveSpin (ST36) wild-nudge that shares the triggering paid spin's SpinTimes (cost=0); ST36 'move' rounds can chain into a multi-move burst. Both STs carry natural PayoutIdToWinAmount -> no synthesized payid required."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M51/mode_1"},
+    "evidence": "Manifest-only onboarding (no new code). Provenance: _cache_version=3 (real) on 2 chunks, single config bucket 40e56dde/1a975157, _bet=1000. ST inventory M51/mode_1: ONLY ST35 + ST36 present (47044 rounds). ST35 = paid_spin/Normal (cost=1000, standard reel signature, natural payid). ST36 = respin/MoveSpin (cost=0 FREE wild-nudge, ReMarks='move', natural payid) -- field-signature match to M279's validated ST36 respin/MoveSpin -> STRICT-REUSE (verbatim, generic per-ST + respin_dynamics plugins auto-adapt). NO collect-coin channel (SymbolIndexToRewards / CollectCount / CreditsSymbols all ABSENT). NO no-payid settlement ST. NO novel mechanic field. CurJackpotStoreWin present but =0 on 100% of 47044 records (test-interface-zeroed, parse-as-is, forward-compatible). Brief's broader VALIDATED ST list (ST1/ST140/ST2/ST50/ST51/ST126/ST117/ST14/ST15/ST13/ST160) does NOT appear in this mode's rawdata -- derived FRESH from M51's own data per cardinal rule 1.",
+    "caveats": [
+      "ST36 move-burst-length histogram (len1/2/3) needs per-round run-length accumulation in parser.py (base-closure) -- respin_dynamics surfaces continuation_prob base-excluded and flags the histogram parser_blind, same boundary as M279/M43. Framework-team item.",
+      "ReelSkin uniform=1 (no boost-reel breakout dimension in this sample); GameplayTriggerType uniform=0 (a red-herring optional field, not shape-bearing)."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST35/ST36 round but =0 on 100% of 47044 in-sample records. Fleet-wide test-interface behavior (user-confirmed 2026-06-12, recorded once per machine): a real progressive jackpot store whose accumulation efficiency the CURRENT testspin interface forces to 0, so the sample correctly shows 0. Parse as-is with the progressive contributing 0; the field is already in the ST35/ST36 signature so parsing is FORWARD-COMPATIBLE. The observed RTP is the BASE RTP (excludes the progressive); the progressive ADDS on top once the interface enables it.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [35], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

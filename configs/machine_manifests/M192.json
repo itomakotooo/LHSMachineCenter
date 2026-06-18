@@ -1,0 +1,46 @@
+{
+  "machine_id": "M192",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "140": {
+      "role": "paid_spin",
+      "play": "NormalCollectionSpin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "CollectCount", "AccCredits", "CreditsSymbols", "WinCredits"],
+      "observed_fields": ["AccCredits", "BetAmount", "CollectCount", "CostCredits", "CreditsSymbols", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "SymbolIndexToRewards", "WinCredits"],
+      "observed_field_presence": {"AccCredits": 1.0, "BetAmount": 1.0, "CollectCount": 1.0, "CostCredits": 1.0, "CreditsSymbols": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "SymbolIndexToRewards": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M192/mode_1 bucket 88dfe528/9abd3fae 2026-06-18",
+      "note": "Paid reel spin (CostCredits=1000), signature matches M279/M153 ST140 NormalCollectionSpin -> STRICT-REUSE generic PER_SPINTYPE plugins (no new code). Collect-coin channel DORMANT on this sample: CreditsSymbols empty 100% (40000/40000), SymbolIndexToRewards='{}' 100% — NOT a live additive collect channel. CollectCount ticks a metronome (1..39 observed, never reaches a 1000-cycle settlement here). Win attributes CLEANLY via PayoutIdToWinAmount: sum(payid)==sum(WinCredits) EXACT (20,396,000), no _unattributed residual. our==server NormalCollectionSpin SummaryWin EXACT 20,396,000."
+    },
+    "139": {
+      "role": "settlement",
+      "play": "ListRewardWheel",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["SpinType", "SpinTimes", "RTPId", "WinCredits", "ReMarks", "RewardLastNode", "IsLackCreditsSpin", "LastCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M192/mode_1 bucket 88dfe528/9abd3fae 2026-06-18",
+      "note": "ListRewardWheel settlement (the literal FeatureWin/SummaryWin key from server analysisResult). CostCredits=0 (free), WinCredits>0 on 100% (535/535), NO native payid on 100% (PayoutByPayline=null, PayoutIdToWinAmount={}), ReMarks='Minigame CellIndexes: ...' pick sequence + RewardLastNode node codes 1101-1105. ALWAYS preceded by ST140 (535/535) -> a paid-spin-triggered minigame settlement. our==server ListRewardWheel SummaryWin EXACT 14,430,500; distinct from ST140 (no double-count). NO native payid -> SYNTHESIZE needed (status=needs_synth). EXACT M247/M274/M278/M43 precedent (synthesize_pay_id, label_format=spin_type). Role DERIVED from own fields (bare WinCredits, no reel stops, no payid = settlement); matches M210/M247 ST139 ListRewardWheel settlement signature."
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "Minigame CellIndexes", "opens": "ListRewardWheel", "note": "no round-level trigger pid. ST139 ListRewardWheel is a free (cost=0) settlement that fires after the paid ST140 NormalCollectionSpin (535/535 preceded by ST140); win-driven server-side, no payid scatter."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M192/mode_1"},
+    "evidence": "Onboard W1-W3 (2026-06-18, fleet batch, manifest-only). Provenance v3 (real, _cache_version:3, _bet:1000, config_md5 88dfe528, code_md5 9abd3fae). 8 robots, 40,535 rounds. ST inventory: ONLY ST140 (40000) + ST139 (535) present in mode_1 — the brief's wider ST hypothesis list (ST1/2/35/50/51/126/117/14/15/13/160/36) is NOT present in this data; structure DERIVED fresh from M192's own rawdata (cardinal rule 1). ST140 paid_spin signature-matches M279 ST140 -> STRICT-REUSE generic PER_SPINTYPE (no new code); collect channel DORMANT (CreditsSymbols/SymbolIndexToRewards empty 100% -> NOT a live additive collect-coin residual channel, no _unattributed_residual ABORT). ST140 win attributes cleanly via payid (sum(payid)==WinCredits EXACT 20,396,000, no residual). ST139 ListRewardWheel settlement (server FeatureWin key) NO native payid -> needs synthesize_pay_id (M247/M43 precedent). Economy invariant HOLDS per-ST: our==server SummaryWin EXACT (ST140 20,396,000; ST139 14,430,500; total 34,826,500), no double-count. No novel mechanic field, no settle-chain the shared plugin rejects, no diverging value-semantics -> NO ABORT.",
+    "caveats": [
+      "ST139 ListRewardWheel per-round Minigame CellIndex pick map + RewardLastNode (1101-1105) node-code ladder are parser_blind (per-ST extraction layer, framework-team) — band-level multiplier distribution + 100% hit-rate ARE base-derivable from the synthesized pid; the per-cell un-merge is not.",
+      "ST140 CollectCount metronome (1..39 observed) does not reach a collect-cycle settlement in this 40k-spin sample — if upstream later populates CreditsSymbols/SymbolIndexToRewards (live collect coins) this manifest must be re-evaluated for a collect settlement ST (currently dormant, no live channel).",
+      "config_md5 88dfe528 single-bucket in this dir (no mixed-md5 split); only 1 chunk (chunk_0002) present — a thin sample. Structure is value-agnostic; report numbers should regenerate from a fuller cache when available."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST140/ST139 round but =0 on 100% of the in-sample records. Fleet-wide test-interface behavior (user-confirmed 2026-06-12, M275 gate 8): a real progressive jackpot store that the current testspin interface forces to 0. Parse as-is contributing 0; the field stays in the signature so parsing is FORWARD-COMPATIBLE — when the interface is later optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE (excludes the progressive).", "rtp_impact": true, "rtp_impact_current": 0, "source": "fleet_default", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [140], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

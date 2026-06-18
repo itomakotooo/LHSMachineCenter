@@ -1,0 +1,306 @@
+{
+  "machine_id": "M20",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "20": {
+      "role": "paid_spin",
+      "play": "CashMachineNormalSpin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "JackpotIds",
+        "LastCredits",
+        "LockLines",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "JackpotIds": 1.0,
+        "LastCredits": 1.0,
+        "LockLines": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M20/mode_1 bucket 3454a857/820a40c6 2026-06-18 (40000 rounds; CostCredits=1000>0 real, ReelSkin=1, GameplayTriggerType=0, ReMarks empty 38156 + trigger/trigger0/trigger00 anchors 225/1599/20; payline pids native (3/1 lines + 666x/777x respin trigger anchors), sum(payid)==WinCredits exact, residual 0)"
+    },
+    "21": {
+      "role": "respin",
+      "play": "CashMachineNormalRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "JackpotIds",
+        "LastCredits",
+        "LockLines",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "JackpotIds": 1.0,
+        "LastCredits": 1.0,
+        "LockLines": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M20/mode_1 bucket 3454a857/820a40c6 2026-06-18 (225 rounds; FREE CostCredits=0, ReMarks='respin', ReelSkin=2, LockLines populated, full reel signature; every win carries native payid (3/1 lines, 103/104), sum(payid)==WinCredits exact, residual 0; predecessor=ST20 225/225)"
+    },
+    "22": {
+      "role": "respin",
+      "play": "CashMachinePeculiarSingleZeroRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "JackpotIds",
+        "LastCredits",
+        "LockLines",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "JackpotIds": 1.0,
+        "LastCredits": 1.0,
+        "LockLines": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M20/mode_1 bucket 3454a857/820a40c6 2026-06-18 (1599 rounds; FREE CostCredits=0, ReMarks='respin0' 1337 + 'trigger00' 262, ReelSkin=11/10, LockLines populated, full reel signature; every win carries native payid (3/1/778), sum(payid)==WinCredits exact, residual 0; predecessor=ST20 1599/1599)"
+    },
+    "23": {
+      "role": "respin",
+      "play": "CashMachinePeculiarDoubleZeroRespin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "PayoutIdToWinAmount",
+        "RewardLastNode",
+        "ReelSkin",
+        "ReMarks",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "JackpotIds",
+        "LastCredits",
+        "LockLines",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "JackpotIds": 1.0,
+        "LastCredits": 1.0,
+        "LockLines": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M20/mode_1 bucket 3454a857/820a40c6 2026-06-18 (282 rounds; FREE CostCredits=0, ReMarks='respin00', ReelSkin=12, LockLines populated, full reel signature; every win carries native payid (778/1), sum(payid)==WinCredits exact, residual 0; predecessors=ST22 262 + ST20 20)"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": "trigger|trigger0|trigger00",
+    "opens": "CashMachineNormalRespin|CashMachinePeculiarSingleZeroRespin|CashMachinePeculiarDoubleZeroRespin",
+    "note": "No 666/777-style ZERO-credit trigger anchor that opens a feature from a non-paying base round: ST20 carries its OWN win-bearing payline pids (3/1) PLUS feature-anchor pids (6661-6663 / 7771-7772) that BOTH pay credits (sum(payid)==WinCredits exact) AND open the respins; the respin grant is encoded in the paid spin's ReMarks ('trigger'/'trigger0'/'trigger00') and ReelSkin. The three Cash-Machine respin features fire server-side and chain off ST20: ST21 (NormalRespin, skin 2) <- ST20 225 grants; ST22 (PeculiarSingleZeroRespin, skin 11/10) <- ST20 1599 grants; ST23 (PeculiarDoubleZeroRespin, skin 12) <- ST22 262 + ST20 20. All three respins are FREE cost=0 reel spins carrying their OWN native payids (every win has a matching PayoutIdToWinAmount, residual 0) -> no payid synthesis. Same `respin` archetype as M43 ST50 / M279 ST36 / M148 ST147 by FIELD SIGNATURE; ST numbers 20-23 are irrelevant (reuse is by signature, not by number)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M20/mode_1"
+    },
+    "evidence": "Provenance clean (_cache_version:3 real, _dev_sample absent; chunk_0002 single bucket 3454a857/820a40c6, 42106 rounds across 8 robots; mode_1 by_md5 = one config). Four STs derived FRESH from M20's own fields, then matched to the reuse registry by FIELD SIGNATURE (not ST number). ST20 = paid base spin (CostCredits=1000>0, ReelSkin=1, GameplayTriggerType=0, full reel signature, payline + anchor payids native, residual 0) -> paid_spin/CashMachineNormalSpin (the literal analysisResult FeatureWin key). ST21/ST22/ST23 = FREE cost=0 reel spins extending the paid spin (ReMarks 'respin'/'respin0'/'respin00', distinct premium skins 2/11/10/12, LockLines populated, full reel signature StopSymbolsByCol+PayoutByPayline+PayoutIdToWinAmount) -> role respin (the M43 ST50 / M279 ST36 / M148 ST147 archetype), plays = CashMachineNormalRespin / CashMachinePeculiarSingleZeroRespin / CashMachinePeculiarDoubleZeroRespin (the literal analysisResult FeatureWin keys; ST<->feature mapping matched EXACTLY by both count and WinCredits sum: ST20=40000/10252100, ST21=225/2086200, ST22=1599/16525500, ST23=282/5320000). Sequence proves the chain: ST21<-ST20(225), ST22<-ST20(1599), ST23<-ST22(262)+ST20(20). respin_dynamics (role-keyed via ROLE_ANALYSES[respin], manifest-resolved) + the generic PER_SPINTYPE plugins (spin_type_outcomes / payouts_by_spin_type / reel_marginal_by_spin_type / spin_type_rtp_buckets) strict-reuse VERBATIM -> manifest-only onboard: no new plugin, no machine_spec change, no frontend change (respin role + respin_dynamics already wired and rendered for M43/M148/M279). NO novel mechanic and NO live-collect channel: scanned every round for SymbolIndexToRewards / CollectCount / CreditsSymbols -> none populated (0); all 9598 winning rounds (ST20 8542 + ST21 225 + ST22 723 + ST23 108) carry a matching native payid summing EXACTLY to WinCredits (residual 0, no SynthesizePayIdRule needed, fallback bucket stays 0). base_hash 3ddaa183f38c unchanged (all 5 artifacts base-excluded; only the manifest was written). USER SIGN-OFF PENDING (gate 8).",
+    "caveats": [
+      "ST21/ST22/ST23 plays (CashMachineNormalRespin / CashMachinePeculiarSingleZeroRespin / CashMachinePeculiarDoubleZeroRespin) are NEW play names not previously onboarded, but all three map to the EXISTING validated `respin` role; the generic per-ST plugins + respin_dynamics auto-adapt by role (resolved from the manifest, not by ST number) -> no new code. [W2]",
+      "Respin trigger gate (which winning ST20 configs open each Cash-Machine respin) is server-side and not encoded as a round-level rule; grant-rates are observed (ST20->ST21 225/40000, ST20->ST22 1599/40000, chain ST22->ST23 262), the exact lock/grant rule + the chain stopping probability are rawdata-unobservable. [W3]",
+      "CurJackpotStoreWin present 100% but test-interface-zeroed (0 on all 42106 rounds) -> fleet-wide test-interface behavior (user-confirmed 2026-06-12); parse-as-is, kept in all 4 ST signatures so parsing is FORWARD-COMPATIBLE; the data RTP is the BASE (excludes the progressive). [out_of_engine_mechanics]",
+      "ANALYZER DATA BOUNDARY: respin burst-length / chain run-length histograms + per-skin breakout + per-line PayoutByPayline ladder require per-round ReMarks/line/LockLines accumulation that lives only in the parser (a base-closure file). respin_dynamics computes every metric the frozen accumulators expose and marks the parser-blind sub-metrics in its `parser_blind` field; those are framework-team work. [03]",
+      "Only mode 1 cached for M20 (mode_2/mode_5 have no chunks; mode_7 has chunks but is out of this onboard scope). Other modes share STRUCTURE (value-agnostic parser) and would reuse this manifest unchanged."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST20/ST21/ST22/ST23 round but =0 on 100% of the in-sample records (42106/42106). FLEET-WIDE (user-confirmed 2026-06-12): the CURRENT testspin interface forces the progressive jackpot store accumulation to 0, so the sample correctly shows 0. Parse the data as-is with the progressive contributing 0; the field is already in all 4 ST signatures, so parsing is FORWARD-COMPATIBLE -- when the test interface is later optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE RTP (excludes the progressive); the progressive ADDS on top once the interface enables it.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {
+    "paid_st": [
+      20
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

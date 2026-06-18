@@ -1,0 +1,45 @@
+{
+  "machine_id": "M53",
+  "schema": "spintype-native/1",
+  "modes": [1],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M53/mode_1 bucket 5685897f/f68454a5 2026-06-18 (chunk_0002, 8 robots, 40000 ST1 rounds)"
+    },
+    "5": {
+      "role": "respin",
+      "play": "RedHotRespin",
+      "economy": {"win_field": "WinCredits", "kind": "real"},
+      "signature": ["BetAmount", "CostCredits", "StopSymbolsByCol", "PayoutByPayline", "PayoutIdToWinAmount", "RewardLastNode", "ReelSkin", "ReMarks", "WinCredits"],
+      "observed_fields": ["BetAmount", "CostCredits", "CurJackpotStoreWin", "GameplayTriggerType", "IsLackCreditsSpin", "LastCredits", "PayLineGroupId", "PayoutByPayline", "PayoutGroupId", "PayoutIdToWinAmount", "RTPId", "ReMarks", "ReelSkin", "RewardLastNode", "SpinTimes", "SpinType", "StopSymbolsByCol", "WinCredits"],
+      "observed_field_presence": {"BetAmount": 1.0, "CostCredits": 1.0, "CurJackpotStoreWin": 1.0, "GameplayTriggerType": 1.0, "IsLackCreditsSpin": 1.0, "LastCredits": 1.0, "PayLineGroupId": 1.0, "PayoutByPayline": 1.0, "PayoutGroupId": 1.0, "PayoutIdToWinAmount": 1.0, "RTPId": 1.0, "ReMarks": 1.0, "ReelSkin": 1.0, "RewardLastNode": 1.0, "SpinTimes": 1.0, "SpinType": 1.0, "StopSymbolsByCol": 1.0, "WinCredits": 1.0},
+      "observed_fields_source": "st_inventory M53/mode_1 bucket 5685897f/f68454a5 2026-06-18 (chunk_0002, 8 robots, 2616 ST5 rounds)"
+    }
+  },
+  "trigger": {"payout_id": null, "remarks": "RedHotRespin", "opens": "RedHotRespin", "note": "no round-level trigger pid. RedHotRespin (ST5) is a FREE cost=0 reel spin on a premium reel skin (ReelSkin=2) that extends the triggering paid ST1 spin (cost=1000, ReelSkin=1). The trigger marker is the numeric ST1 ReMarks value in {2,3,4}: every such ST1 round is IMMEDIATELY followed by exactly one ST5 (2616/2616 observed); empty-ReMarks ST1 returns to ST1. ST5 always runs length 1 and returns to ST1. Both STs settle natively via PayoutIdToWinAmount (no synthesis) — same archetype as M7 ST5 RedHotRespin / M43 ST50 WinRespin / M279 ST36 MoveSpin (win-driven free reel extension)."},
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {"mode": 1, "rawdata": "M53/mode_1", "cross_mode": [1]},
+    "evidence": "Fleet-batch manifest-only onboard 2026-06-18 (NO new code — strict-reuse of the paid_spin/Normal per-ST plugins + the respin role / respin_dynamics plugin; same archetype + same _code_md5 f68454a5 as confirmed M7). Provenance: chunk_0002 _cache_version:3 (REAL, not virtual), single md5 bucket 5685897fa171f5d64d671b786a2ac014 / f68454a5833a62feed44ec193a393d6e, _bet=1000. (chunk_0001 is indexed in _chunks.json but absent on disk; structure derives from the one present chunk, value-agnostic.) Inventory (node extract, 8 robots, 42616 rounds): exactly 2 STs. ST1 (40000 rounds, 93.86%) = paid base game, CostCredits=1000, ReelSkin=1, win via native PayoutIdToWinAmount (5359 winning rounds, all with non-empty payid map). ST5 (2616 rounds, 6.14%) = FREE cost=0 reel respin, ReelSkin=2, 100% win>0, native PayoutIdToWinAmount. Server analysisResult FeatureWin taxonomy = exactly {Normal, RedHotRespin}, fire counts matching ST counts exactly (Normal=40000, RedHotRespin=2616) -> play names confirmed VERBATIM from M53's own data (not copied from M7). Sequence proof: ST5 is ALWAYS preceded by ST1 (predOf5={1:2616}), run-length always 1, and ST1 with ReMarks in {2,3,4} ALWAYS triggers the next ST5 (1485/759/372 = 2616) -> RedHotRespin is a win-driven free reel extension of the paid spin = `respin` role (M7/M43/M279 archetype, strict field-signature match). Attribution invariant holds at data level: sum(WinCredits)==sum(PayoutIdToWinAmount values)==38053000 exact -> no _unattributed bucket, NO SynthesizePayIdRule needed. NO live-collect channel: SymbolIndexToRewards / CollectCount / CreditsSymbols / AccCredits all ABSENT (0 populated) -> no residual ABORT trigger. CurJackpotStoreWin present on 100% of rounds but =0 on 100% (test-interface-zeroed, fleet-wide). NOT YET user-signed (status=auto); report_engine smoke + console render gate pending coordinator.",
+    "caveats": [
+      "ST5 RedHotRespin trigger gate (which paid-spin outcomes / why ReMarks value in {2,3,4} opens a respin) is a server-side decision not fully derivable from rawdata — the grant correlation (ST1 ReMarks in {2,3,4} -> next ST5, 2616/2616) is observed but the gating rule is not. Same boundary as M7 ST5 / M43 ST50 respin trigger gate.",
+      "ST5 respin burst-length is trivially 1 in this sample (every respin runs length 1); a multi-respin chain, if structurally possible, would need per-round run-length accumulation in parser.py (base-closure) — respin_dynamics surfaces continuation_prob base-excluded and flags the histogram parser_blind. Framework-team item (same as M7/M43/M279).",
+      "Only chunk_0002 is present on disk (chunk_0001 indexed but missing); single config-md5 bucket (5685897f/f68454a5) — no mixed-md5 report-scoping concern. A wider re-sample would broaden the ST1 ReMarks trigger-value coverage (M7 saw {2,3,4,5}; this chunk shows {2,3,4}); structure is unchanged.",
+      "RewardLastNode / PayoutByPayline are present as STRING-encoded payline descriptors; the real per-id win channel is PayoutIdToWinAmount (a dict) — the generic per-ST payout plugins consume the native payid map."
+    ],
+    "date": "2026-06-18"
+  },
+  "out_of_engine_mechanics": [
+    {"name": "CurJackpotStoreWin progressive (test-interface-zeroed)", "desc": "Field 'CurJackpotStoreWin' is present on every ST1/ST5 round but =0 on 100% of the 42616 in-sample records. FLEET-WIDE test-interface behavior (user-confirmed 2026-06-12, recorded once per machine): it is a real progressive jackpot store, but the current testspin interface forces its accumulation to 0 (so the sample correctly shows 0). Parse the data as-is with the progressive contributing 0; the field is already in the ST1/ST5 signature, so parsing is FORWARD-COMPATIBLE — when the test interface is optimized to populate it, the existing parser picks it up unchanged. The data RTP is the BASE RTP (excludes the progressive); it grows when the field is enabled.", "rtp_impact": true, "rtp_impact_current": 0, "source": "domain", "status": "real_but_test_interface_zeroed"}
+  ],
+  "round_win_rule": null,
+  "rtp_integrity": {"paid_st": [1], "fallback_warn": 0.5, "fallback_fail": 5.0}
+}

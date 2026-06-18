@@ -1,0 +1,111 @@
+{
+  "machine_id": "M23",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "13": {
+      "role": "paid_spin",
+      "play": "LockReSpin",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "LockLines",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "LockLines",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "LockLines": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M23/mode_1 bucket d1db8877/a2617134 (chunk_0002.json, 40,000 rounds) 2026-06-18"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": null,
+    "opens": null,
+    "note": "Single-ST LockReSpin base game in mode 1: every round is SpinType=13, BetAmount=1000, CostCredits=0 (the legacy LockReSpin shape — M10/M23/M131/M133 — that the frozen parser short-circuits to PAID via cost_credits_unreliable, since the server never populates CostCredits on these machines), SpinTimes increments +1 per round (every round is its own paid reel spin, no grouping). The lines-lock feature fires INLINE inside the same paid ST: ReMarks=='trigger' on 1,267/40,000 rounds (3.17%) exactly when LockLines is populated (e.g. '1-2-','2-3-','1-3-'), 100% overlap. This is NOT a granted free session or a separate respin/settlement ST — it is the base reel spin with a feature flag. Server FeatureWin taxonomy has a SINGLE key 'LockReSpin' (the whole base game is the LockReSpin feature). NO trigger_paths dimension (single ST, the feature is parser-blind LockLines geometry, not a discriminator the manifest reconstructs)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M23/mode_1"
+    },
+    "evidence": "W1 ground truth (chunk_0002.json, single config-md5 bucket d1db8877|a2617134, _cache_version 3 REAL, _bet 1000, 40,000 rounds): SpinType tally {13:40000} (genuinely single ST); CostCredits=0 on 100% while BetAmount=1000 on 100% -> the frozen parser's cost_credits_unreliable short-circuit (parser.py L644-666, L1666-1678, M23 named explicitly) classifies all spins PAID; ReMarks {'':38733,'trigger':1267}; GameplayTriggerType constant 0; CurJackpotStoreWin=0 on 100% (test-interface-zeroed fleet pattern). Economy: WinCredits is the real win; PayoutIdToWinAmount sums EXACTLY to WinCredits on 13,183/13,183 winning rounds (natural payid, NO SynthesizePayIdRule, NO fallback bucket needed). Server FeatureWin single key 'LockReSpin'. LockLines is the LockReSpin feature field, already recognized + accumulated by the frozen parser (L1591-1595) for legacy LockReSpin machines (M10/M23/M131/M133) -> manifest-only onboard, NO new code. base RTP ~91.43% (value-agnostic, NOT pinned). Mirrors M70.json EXACTLY in shape (single paid_spin ST, native PayoutId attribution, CurJackpotStoreWin out_of_engine); differs only in ST id (13 vs 1), play ('LockReSpin' vs 'Normal'), and the LockLines feature field in the signature.",
+    "caveats": [
+      "CostCredits=0 on 100% of mode-1 rounds (the legacy LockReSpin shape). The frozen parser short-circuits these machines (M10/M23/M131/M133) to PAID via cost_credits_unreliable (all-zero-cost + positive-bet). rtp_integrity.paid_st=[13] uses BetAmount as the per-round paid denominator; this is the correct paid-round RTP.",
+      "LockLines lines-lock feature is PARSER-BLIND for a per-round geometry / lock-pattern x outcome dimension (the frozen parser accumulates coarse lock-line counts only; no per-round LockLines breakout exists). The felt LockReSpin experience (lock-pattern -> win uplift) is REAL but NOT fabricated into the manifest as a dimension. Logged as a fleet-wide framework-team candidate (generic LockLines extractor) shared with the other LockReSpin machines (M10/M131/M133). M23 onboards correctly without it.",
+      "GameplayTriggerType present and constant 0 on all 40,000 rounds (not in the analyzer baseline field set; this machine emits it). Parse-as-is (constant 0); forward-compatible (in observed_fields).",
+      "Single config-md5 bucket d1db8877|a2617134 (single chunk chunk_0002.json on disk; _chunks.json also lists a chunk_0001.json that is no longer present, same md5 bucket -> no mixed-md5 pooling concern).",
+      "Modes other than 1 NOT analyzed (mode-1-only onboarding); mode dirs (if any) MUST get their own W1 + reuse pass before any reuse claim.",
+      "validation.status stays 'auto' until onboard-breaker + gate-7 console render verify + user gate-8 domain sign-off."
+    ],
+    "date": "2026-06-18",
+    "signed_off_date": null
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every ST13 round but =0 on 100% of 40,000 records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is in observed_fields so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). The data RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "rtp_integrity": {
+    "paid_st": [
+      13
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}
