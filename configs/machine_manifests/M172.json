@@ -1,0 +1,106 @@
+{
+  "machine_id": "M172",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M172/mode_1 bucket 2c857779/536fc5a2 2026-06-18"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": null,
+    "opens": null,
+    "note": "Base-game-only machine in mode 1. No granted-session / feature trigger exists: ReMarks empty on 40,000/40,000 rounds, GameplayTriggerType constant 0, FeatureWin single key 'Normal'. No trigger session structure to reconstruct. NO trigger_paths dimension (single ST, no discriminator)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M172/mode_1"
+    },
+    "evidence": "T1 batch single-ST paid onboarding 2026-06-18 (manifest-only, NO new code, strict mirror of confirmed M70). _cache_version 3 REAL (chunk_0002.json, single config-md5 bucket 2c857779/536fc5a2). Deep parse via fresh_slotlab.analyzer.st_inventory.extract_st_inventory('M172',1) + parse_rounds over 8 robots = 40,000 rounds: SpinType tally {1:40000} (genuinely SINGLE ST); role paid_spin (StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present on 100%, CostCredits>0 on 100%, BetAmount constant 1000); FeatureWin single key 'Normal' (json.loads twice across all 8 robots); ReMarks empty on 40,000/40,000; GameplayTriggerType constant 0; field signature byte-identical to M70's confirmed st1 signature/observed set. Settlement: Sigma(PayoutIdToWinAmount)==Sigma(WinCredits) EXACTLY (32,785,000==32,785,000; 0 no-payid wins) -> native PayoutId space, no SynthesizePayIdRule, no _unattributed_* fallback. base_hash 3ddaa183f38c unchanged before/after (manifest base-excluded). report_engine.generate_report_from_chunks('M172',1,bet=1000): rtp_integrity_check.passed=True, fallback share 0.",
+    "caveats": [
+      "Single ~40k-round chunk (chunk_0002.json), single config-md5 bucket 2c857779/536fc5a2 (no mixed-md5 pooling concern). High-multiplier tail is DIRECTIONAL on this sample size, not precise. NOT re-fetched (cache-only).",
+      "GameplayTriggerType is present and constant 0 on all 40,000 rounds in mode 1 (NOT in the analyzer baseline field set; this machine emits it). Non-zero meaning undetermined from mode-1 data. Parse-as-is (constant 0); forward-compatible (in the st1 signature).",
+      "Modes 2/5/7 NOT analyzed (mode-1-only onboarding). They may exercise other STs / non-zero GameplayTriggerType and MUST get their own W1 + reuse pass before any reuse claim.",
+      "validation.status stays 'auto' until breaker (our==server) + gate-7 render verify + user gate-8 sign-off."
+    ],
+    "date": "2026-06-18",
+    "signed_off_date": null
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every st1 round but =0 on 100% of 40,000 records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in the st1 signature so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). The reported RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}

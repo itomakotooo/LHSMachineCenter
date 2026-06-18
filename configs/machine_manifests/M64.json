@@ -1,0 +1,98 @@
+{
+  "machine_id": "M64",
+  "schema": "spintype-native/1",
+  "modes": [
+    1
+  ],
+  "inherits_from": null,
+  "spin_types": {
+    "1": {
+      "role": "paid_spin",
+      "play": "Normal",
+      "economy": {
+        "win_field": "WinCredits",
+        "kind": "real"
+      },
+      "signature": [
+        "BetAmount",
+        "CostCredits",
+        "StopSymbolsByCol",
+        "PayoutByPayline",
+        "WinCredits"
+      ],
+      "observed_fields": [
+        "BetAmount",
+        "CostCredits",
+        "CurJackpotStoreWin",
+        "GameplayTriggerType",
+        "IsLackCreditsSpin",
+        "LastCredits",
+        "PayLineGroupId",
+        "PayoutByPayline",
+        "PayoutGroupId",
+        "PayoutIdToWinAmount",
+        "RTPId",
+        "ReMarks",
+        "ReelSkin",
+        "RewardLastNode",
+        "SpinTimes",
+        "SpinType",
+        "StopSymbolsByCol",
+        "WinCredits"
+      ],
+      "observed_field_presence": {
+        "BetAmount": 1.0,
+        "CostCredits": 1.0,
+        "CurJackpotStoreWin": 1.0,
+        "GameplayTriggerType": 1.0,
+        "IsLackCreditsSpin": 1.0,
+        "LastCredits": 1.0,
+        "PayLineGroupId": 1.0,
+        "PayoutByPayline": 1.0,
+        "PayoutGroupId": 1.0,
+        "PayoutIdToWinAmount": 1.0,
+        "RTPId": 1.0,
+        "ReMarks": 1.0,
+        "ReelSkin": 1.0,
+        "RewardLastNode": 1.0,
+        "SpinTimes": 1.0,
+        "SpinType": 1.0,
+        "StopSymbolsByCol": 1.0,
+        "WinCredits": 1.0
+      },
+      "observed_fields_source": "st_inventory M64/mode_1 bucket 6738b14d/536fc5a2 2026-06-18"
+    }
+  },
+  "trigger": {
+    "payout_id": null,
+    "remarks": null,
+    "opens": null,
+    "note": "Base-game-only machine in mode 1. No granted-session / feature trigger exists: ReMarks empty on 40,000/40,000 rounds, GameplayTriggerType constant 0, FeatureWin single key 'Normal'. No trigger session structure to reconstruct. NO trigger_paths dimension (single ST, no discriminator)."
+  },
+  "validation": {
+    "status": "auto",
+    "user_signed_off": false,
+    "confirmed_against": {
+      "mode": 1,
+      "rawdata": "M64/mode_1"
+    },
+    "evidence": "onboard-implementer T1-batch manifest-only onboard 2026-06-18 (single-ST paid base-game). Deep parse: st_inventory('M64',1) + cross-signal re-sum over the cached chunk (chunk_0002.json, _cache_version 3 REAL, _bet 1000, config-md5 6738b14d / code-md5 536fc5a2). Single SpinType tally {1:40000}; role paid_spin (StopSymbolsByCol + PayoutByPayline + PayoutIdToWinAmount present on 100%, CostCredits=BetAmount=1000 on 100%, no 0-cost free ST); ReMarks {\"\":40000}; GameplayTriggerType constant 0; FeatureWin single key 'Normal' (READ from analysisResult, not assumed). No-payid settlement ruled out: sum(PayoutIdToWinAmount)==sum(WinCredits)==33,651,720 on the 40,000-round sample. Field set byte-identical to confirmed M70 single-ST-paid signature/observed set. report_engine.generate_report_from_chunks('M64',1,bet=1000): rtp_integrity_check.passed==True, NO _unattributed_* fallback bucket. base_hash 3ddaa183f38c unchanged (manifest base-excluded). STRICT-REUSE of the shared cross-cutting + per-spintype paid_spin plugins (no NEW plugin, no fork). RTP value NOT pinned (value-agnostic gate)."
+  },
+  "out_of_engine_mechanics": [
+    {
+      "name": "CurJackpotStoreWin progressive (test-interface-zeroed)",
+      "desc": "Field 'CurJackpotStoreWin' is present on every st1 round but =0 on 100% of 40,000 records. Established fleet-wide test-interface zeroing, declaration-confirmed (memory: gate-8 ruling + M279/M283 sign-off — a real progressive jackpot store the current testspin interface forces to 0). Parse as-is at 0; the field is already in the st1 signature so parsing is FORWARD-COMPATIBLE (when the interface populates it the existing parser picks it up unchanged). Base RTP excludes the progressive; it would add on top once the interface enables it. NOT a per-machine investigation — fleet pattern, one-time recorded.",
+      "rtp_impact": true,
+      "rtp_impact_current": 0,
+      "source": "domain",
+      "status": "real_but_test_interface_zeroed"
+    }
+  ],
+  "rtp_integrity": {
+    "paid_st": [
+      1
+    ],
+    "fallback_warn": 0.5,
+    "fallback_fail": 5.0
+  }
+}
