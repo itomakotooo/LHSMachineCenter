@@ -53,12 +53,25 @@ def new_signals() -> dict:
         "n": 0, "cost_pos": 0, "bet_pos": 0,
         "win_wc": 0, "win_wa": 0, "zero_win": 0,
         "coin_json": 0, "new_reel": 0, "lock_pop": 0,
+        "lock_grows": 0,     # rounds where the held set GROWS vs the prev round of the same burst
+        "echo_cost": 0,      # cost-bearing rounds whose wallet delta == win (cost is a per-record echo)
         "fields": set(), "remarks": Counter(),
+        "_last_spt": None, "_last_lockn": 0,   # sequence state for accumulation
     }
 
 
-def fold_round(sig: dict, r: dict) -> None:
-    """Fold ONE round into a signal accumulator (mutates ``sig``)."""
+def _lock_count(r: dict) -> int:
+    for lf in _LOCK_FIELDS:
+        v = r.get(lf)
+        if v not in (None, "", [], {}, "[]", "{}"):
+            return len(re.findall(r"\d+", str(v)))
+    return 0
+
+
+def fold_round(sig: dict, r: dict, prev_last_credits: float | None = None) -> None:
+    """Fold ONE round into a signal accumulator (mutates ``sig``). ``prev_last_credits``
+    is the wallet (LastCredits) AFTER the immediately preceding round in sequence; pass it
+    to detect echo-cost (a free spin whose CostCredits is a per-record echo, M104/M96 class)."""
     sig["n"] += 1
     cost = _num(r.get("CostCredits"))
     bet = _num(r.get("BetAmount"))
@@ -74,6 +87,12 @@ def fold_round(sig: dict, r: dict) -> None:
         sig["win_wa"] += 1
     if wc <= 0 and wa <= 0:
         sig["zero_win"] += 1
+    # echo-cost: a charged spin moves the wallet by (win - cost); an echo (free) spin moves it
+    # by (win) only. delta == win  =>  cost was not actually charged.
+    if cost > 0 and prev_last_credits is not None:
+        delta = _num(r.get("LastCredits")) - prev_last_credits
+        if abs(delta - wc) < 0.5:
+            sig["echo_cost"] += 1
     rm = str(r.get("ReMarks") or "")
     if rm and len(sig["remarks"]) < 64:        # cap remarks vocabulary (memory bound)
         sig["remarks"][rm[:40]] += 1
@@ -83,20 +102,28 @@ def fold_round(sig: dict, r: dict) -> None:
         sig["coin_json"] += 1
     if r.get("StopSymbolsByCol") not in (None, "", [], {}):
         sig["new_reel"] += 1
-    for lf in _LOCK_FIELDS:
-        if r.get(lf) not in (None, "", [], {}, "[]", "{}"):
-            sig["lock_pop"] += 1       # a held reel/line/coin position is populated this round
-            break
+    lockn = _lock_count(r)
+    if lockn > 0:
+        sig["lock_pop"] += 1       # a held reel/line/coin position is populated this round
+        # accumulation: within the SAME respin burst (same SpinTimes), does the held set grow?
+        spt = r.get("SpinTimes")
+        if spt is not None and spt == sig["_last_spt"] and lockn > sig["_last_lockn"]:
+            sig["lock_grows"] += 1
+        sig["_last_spt"] = spt
+        sig["_last_lockn"] = lockn
     for k, v in r.items():
         if v not in (None, "", [], {}, "[]", "{}"):
             sig["fields"].add(k)
 
 
 def aggregate_st_signals(rounds: list[dict]) -> dict:
-    """Reduce all rounds of ONE (machine, ST) to the signals the rules need."""
+    """Reduce all rounds of ONE (machine, ST) to the signals the rules need. Rounds must be
+    in original order so the lock-accumulation + echo-cost (wallet-delta) signals work."""
     sig = new_signals()
+    prev_lc = None
     for r in rounds:
-        fold_round(sig, r)
+        fold_round(sig, r, prev_last_credits=prev_lc)
+        prev_lc = _num(r.get("LastCredits"))
     return sig
 
 
@@ -115,11 +142,14 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
     is genuinely ambiguous -> the gate routes it to domain sign-off, never a silent guess."""
     f = sig["fields"]
     n = max(sig["n"], 1)
-    cost0 = sig["cost_pos"] == 0
+    # "effectively free" = no real charge: never cost-bearing, OR the CostCredits is a
+    # per-record echo (wallet delta == win, the M104/M96 class) on most rounds.
+    cost0 = sig["cost_pos"] == 0 or (sig["echo_cost"] / n >= 0.5)
     win = sig["win_wc"] + sig["win_wa"]
     reel = sig["new_reel"] / n
     coin = sig["coin_json"] / n
     lock = sig["lock_pop"] / n
+    lock_grows = sig["lock_grows"] / n
     has_remarks = bool(sig["remarks"])
     respin_word = _remarks_has(sig, "respin", "move", "redhot", "nudge")
 
@@ -143,14 +173,19 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
     # 6. bare / WinAmount settlement: free, win-bearing, NO fresh reel of its own, no held state.
     if cost0 and win > 0 and reel < 0.5 and coin == 0 and lock == 0:
         return "settlement", 0.75, "free + win-bearing + no fresh reel (bare/WinAmount settlement)"
-    # 7. hold_respin (held-reel zone): free reel re-spin with a POPULATED lock field but no
-    #    coin-collection. Confident hold for the LockReSpin family; flagged for sign-off only
-    #    where it collides with a respin label (handled by the gate's allow-list).
-    if cost0 and lock >= 0.5 and reel >= 0.5 and coin == 0:
-        return "hold_respin", 0.75, f"populated lock field ({sig['lock_pop']}/{n}) + reel re-spin"
-    # 8. respin: a reel re-spin marked 'respin'/'move'/'nudge' (paid OR free), no held state.
+    # 7. hold_respin (CONFIDENT): held set ACCUMULATES across the burst (reels progressively
+    #    lock, e.g. M252 ST125 1,5,6,7 -> ... -> 1,2,4,5,6,7,8). A genuine hold-and-respin.
+    if cost0 and lock >= 0.5 and lock_grows > 0 and reel >= 0.5 and coin == 0:
+        return "hold_respin", 0.85, f"held set ACCUMULATES across the burst ({sig['lock_grows']} grow-steps)"
+    # 8. CONSTANT-lock zone -- GENUINELY AMBIGUOUS (low confidence -> sign-off). A populated but
+    #    non-accumulating lock field is a held position that does NOT grow: the fleet labels this
+    #    inconsistently as hold_respin (M227 ST13 'LockLines=2-') vs respin (M20 ST22/23). The
+    #    data alone cannot decide -- the deriver REFUSES to guess and routes to domain sign-off.
+    if cost0 and lock >= 0.5 and lock_grows == 0 and reel >= 0.5 and coin == 0:
+        return "hold_respin", 0.55, "constant (non-accumulating) lock -- hold vs respin is a domain call"
+    # 9. respin: a reel re-spin marked 'respin'/'move'/'nudge', no held lock at all.
     if respin_word and reel >= 0.5 and coin == 0 and lock == 0:
-        return "respin", 0.85, "ReMarks respin/move/nudge + reel + no held state"
+        return "respin", 0.85, "ReMarks respin/move/nudge + reel + no lock"
     # 9. respin (implicit): FREE reel re-spin with EMPTY ReMarks subordinate to a paid base
     #    (RedHotRespin ST5). 'null' ReMarks is NOT empty -> excluded (falls to state below).
     if cost0 and not has_remarks and reel >= 0.5 and coin == 0 and lock == 0:
@@ -164,6 +199,10 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
 
 
 def derive_economy(sig: dict, machine_has_paid_base: bool) -> str:
+    n = max(sig["n"], 1)
+    # cost-bearing but the charge is a per-record echo (wallet delta == win) -> actually FREE
+    if sig["cost_pos"] > 0 and sig["echo_cost"] / n >= 0.5:
+        return "free"
     if sig["cost_pos"] > 0:
         return "paid"
     # legacy lock-respin: cost echo unreliable -> bet>0 on the sole/main loop = paid

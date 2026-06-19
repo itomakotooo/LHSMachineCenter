@@ -88,13 +88,43 @@ def test_deriver_distinguishes_hold_respin_by_coin_state():
     assert p["mechanism"] == "respin", p
 
 
-def test_deriver_lockrespin_family_by_lock_field():
-    """LockReSpin family (M201/M227... ST13): populated LockLines + reel re-spin, no coin,
-    cost=0 -> hold_respin (the v1 regression that dropped this signal must not recur)."""
+def test_deriver_accumulating_lock_is_confident_hold():
+    """M252 ST125: the held set GROWS across the burst (1,5 -> 1,2,5 -> 1,2,4,5...) = a genuine
+    hold-and-respin -> hold_respin at HIGH confidence."""
+    rounds = []
+    locks = ["1,5,", "1,5,", "1,2,5,", "1,2,4,5,", "1,2,4,5,8,"]
+    for i, lk in enumerate(locks):
+        rounds.append({"SpinType": 125, "CostCredits": 0, "BetAmount": 1000, "WinCredits": 0,
+                       "ReMarks": "Respin %d; " % (i + 1), "StopSymbolsByCol": "x",
+                       "LockReels": lk, "SpinTimes": 76})
+    prof = derive_spin_type_profile(rounds, st="125", machine_has_paid_base=True)
+    assert prof["mechanism"] == "hold_respin" and prof["confidence"] >= 0.8, prof
+
+
+def test_deriver_constant_lock_is_low_confidence_signoff():
+    """M227 ST13 (labeled hold) and M20 ST22/23 (labeled respin) both have a CONSTANT lock that
+    never grows -> the fleet is inconsistent and the data cannot decide -> the deriver returns
+    LOW confidence (< MIN_CONFIDENCE) so the gate routes it to domain sign-off, not a guess."""
     rounds = [{"SpinType": 13, "CostCredits": 0, "BetAmount": 1000, "WinCredits": (i % 2) * 200,
-               "ReMarks": "", "StopSymbolsByCol": "x", "LockLines": "1-2-"} for i in range(20)]
+               "ReMarks": "", "StopSymbolsByCol": "x", "LockLines": "2-", "SpinTimes": 100 + i // 2}
+              for i in range(20)]
     prof = derive_spin_type_profile(rounds, st="13", machine_has_paid_base=False)
-    assert prof["mechanism"] == "hold_respin", prof
+    assert prof["confidence"] < 0.7, prof  # ambiguous -> sign-off
+
+
+def test_deriver_echo_cost_is_free_freespin():
+    """M96 ST86: CostCredits=1000 stamped every round, but the wallet (LastCredits) only moves
+    by the win (never -cost) -> the cost is a per-record ECHO -> economy free -> a real freespin."""
+    rounds = []
+    wallet = 100000.0
+    for i in range(20):
+        win = (i % 3) * 1000
+        wallet += win  # echo: wallet rises by win only, cost never subtracted
+        rounds.append({"SpinType": 86, "CostCredits": 1000, "BetAmount": 1000, "WinCredits": win,
+                       "ReMarks": "FreeSpin", "StopSymbolsByCol": "x", "LastCredits": wallet})
+    prof = derive_spin_type_profile(rounds, st="86", machine_has_paid_base=True)
+    assert prof["economy"] == "free", prof
+    assert prof["mechanism"] == "freespin", prof
 
 
 def test_deriver_freespin_word_without_counter():
