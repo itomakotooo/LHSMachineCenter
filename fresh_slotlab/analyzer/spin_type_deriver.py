@@ -1,0 +1,214 @@
+"""Data-driven SpinType mechanism classifier (refactor core).
+
+Replaces the hand-declared `role` with a classification DERIVED per (machine, ST)
+from observable rawdata. Three orthogonal axes:
+
+  mechanism  -- WHAT the SpinType is (selects which feature-dimension plugin runs).
+                Derived from field signature + ReMarks pattern + win channel.
+  economy    -- paid vs free. Derived from CostCredits/BetAmount (recognises the
+                legacy cost-echo-unreliable lock-respin case + WinAmount settlements).
+  position   -- base (main/paid loop) vs feature (triggered by another ST).
+
+Precise signals validated 2026-06-18 against the fleet + adversarial cross-check
+(see the disagreement audit). Notable traps the rules encode:
+  * A "TriggerFreespin"/"TriggerRespin" ReMarks on a COST-BEARING spin is a TRIGGER
+    MARKER for what it spawns, NOT that spin's own mechanism -> classify by signature,
+    require an actual free-session COUNTER ("Freespin <N>") for `freespin`.
+  * hold_respin requires PERSISTENT per-position held state (coin-position JSON that
+    accumulates across rounds), NOT merely the word "respin".
+  * A settlement paying via the WinAmount field has WinCredits==0 -> it is NOT a
+    zero-win `state`. Win presence checks BOTH WinCredits and WinAmount.
+  * "MoveSpin"/"move", empty-ReMarks RedHotRespin, and run-until-blank are all real
+    `respin` (cost=0 + new reel outcome + subordinate to a paid base in the SpinTimes).
+
+This module is import-side-effect-free and base-EXCLUDED (no closure file imports it).
+"""
+from __future__ import annotations
+import re
+from collections import Counter
+from typing import Any
+
+_COIN_JSON = re.compile(r'\{\s*"?\d+"?\s*:\s*\[')        # {"500":[2804] ...  held-coin state
+_FREESPIN_WORD = re.compile(r'free\s*spin', re.I)         # "FreeSpin" / "Freespin 3" (free session)
+_TRIGGER_PREFIX = re.compile(r'^\s*trigger', re.I)        # "Trigger Minigame" -- a marker, not the mechanism
+_SELECTOR_FIELDS = {"DollarCount", "ChosenDollar", "OfferValue"}
+_LOCK_FIELDS = ("LockLines", "LockReels", "LockReel", "HoldReels", "LockPositions")
+
+VALID_MECHANISMS = (
+    "selector", "hold_respin", "freespin", "respin",
+    "wheel", "minigame", "state", "normal",
+)
+
+
+def _num(x: Any) -> float:
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def new_signals() -> dict:
+    """An empty signal accumulator for streaming (memory-light over huge STs)."""
+    return {
+        "n": 0, "cost_pos": 0, "bet_pos": 0,
+        "win_wc": 0, "win_wa": 0, "zero_win": 0,
+        "coin_json": 0, "new_reel": 0, "lock_pop": 0,
+        "fields": set(), "remarks": Counter(),
+    }
+
+
+def fold_round(sig: dict, r: dict) -> None:
+    """Fold ONE round into a signal accumulator (mutates ``sig``)."""
+    sig["n"] += 1
+    cost = _num(r.get("CostCredits"))
+    bet = _num(r.get("BetAmount"))
+    if cost > 0:
+        sig["cost_pos"] += 1
+    if bet > 0:
+        sig["bet_pos"] += 1
+    wc = _num(r.get("WinCredits"))
+    wa = _num(r.get("WinAmount"))
+    if wc > 0:
+        sig["win_wc"] += 1
+    if wa > 0:
+        sig["win_wa"] += 1
+    if wc <= 0 and wa <= 0:
+        sig["zero_win"] += 1
+    rm = str(r.get("ReMarks") or "")
+    if rm and len(sig["remarks"]) < 64:        # cap remarks vocabulary (memory bound)
+        sig["remarks"][rm[:40]] += 1
+    elif rm and rm[:40] in sig["remarks"]:
+        sig["remarks"][rm[:40]] += 1
+    if _COIN_JSON.search(rm):
+        sig["coin_json"] += 1
+    if r.get("StopSymbolsByCol") not in (None, "", [], {}):
+        sig["new_reel"] += 1
+    for lf in _LOCK_FIELDS:
+        if r.get(lf) not in (None, "", [], {}, "[]", "{}"):
+            sig["lock_pop"] += 1       # a held reel/line/coin position is populated this round
+            break
+    for k, v in r.items():
+        if v not in (None, "", [], {}, "[]", "{}"):
+            sig["fields"].add(k)
+
+
+def aggregate_st_signals(rounds: list[dict]) -> dict:
+    """Reduce all rounds of ONE (machine, ST) to the signals the rules need."""
+    sig = new_signals()
+    for r in rounds:
+        fold_round(sig, r)
+    return sig
+
+
+def _remarks_has(sig: dict, *needles: str) -> bool:
+    blob = " ".join(sig["remarks"].keys()).lower()
+    return any(nd.lower() in blob for nd in needles)
+
+
+def _remarks_re(sig: dict, rx: re.Pattern) -> bool:
+    return any(rx.search(k) for k in sig["remarks"])
+
+
+def derive_mechanism(sig: dict) -> tuple[str, float, str]:
+    """Return (mechanism, confidence, evidence). Ordered, first-match; precise signals
+    validated against the fleet 2026-06-18. A confidence < MIN_CONFIDENCE means the data
+    is genuinely ambiguous -> the gate routes it to domain sign-off, never a silent guess."""
+    f = sig["fields"]
+    n = max(sig["n"], 1)
+    cost0 = sig["cost_pos"] == 0
+    win = sig["win_wc"] + sig["win_wa"]
+    reel = sig["new_reel"] / n
+    coin = sig["coin_json"] / n
+    lock = sig["lock_pop"] / n
+    has_remarks = bool(sig["remarks"])
+    respin_word = _remarks_has(sig, "respin", "move", "redhot", "nudge")
+
+    # 1. selector (TopDollar pick offer)
+    if _SELECTOR_FIELDS & f:
+        return "selector", 0.95, "DollarCount/ChosenDollar/OfferValue present"
+    # 2. freespin granted session: any "FreeSpin"/"Freespin N" word on a FREE spin.
+    #    (counter precedence over held-state: a freespin that also holds symbols is a freespin.)
+    if cost0 and _remarks_re(sig, _FREESPIN_WORD):
+        return "freespin", 0.9, "ReMarks 'FreeSpin' on a free (cost=0) spin"
+    # 3. hold_respin (high conf): PERSISTENT per-position held-COIN state.
+    if cost0 and coin >= 0.5:
+        return "hold_respin", 0.92, f"persistent coin-position JSON ({sig['coin_json']}/{n})"
+    # 4. wheel settlement
+    if _remarks_has(sig, "wheelspin"):
+        return "wheel", 0.9, "ReMarks 'WheelSpin'"
+    # 5. minigame settlement: 'MiniGame' on a FREE win-bearing spin (cost=0 excludes a paid
+    #    base whose ReMarks merely say 'Trigger Minigame').
+    if cost0 and win > 0 and _remarks_has(sig, "minigame", "cellindex") and not _remarks_re(sig, _TRIGGER_PREFIX):
+        return "minigame", 0.85, "ReMarks 'MiniGame/CellIndex' + free + win-bearing"
+    # 6. bare / WinAmount settlement: free, win-bearing, NO fresh reel of its own, no held state.
+    if cost0 and win > 0 and reel < 0.5 and coin == 0 and lock == 0:
+        return "settlement", 0.75, "free + win-bearing + no fresh reel (bare/WinAmount settlement)"
+    # 7. hold_respin (held-reel zone): free reel re-spin with a POPULATED lock field but no
+    #    coin-collection. Confident hold for the LockReSpin family; flagged for sign-off only
+    #    where it collides with a respin label (handled by the gate's allow-list).
+    if cost0 and lock >= 0.5 and reel >= 0.5 and coin == 0:
+        return "hold_respin", 0.75, f"populated lock field ({sig['lock_pop']}/{n}) + reel re-spin"
+    # 8. respin: a reel re-spin marked 'respin'/'move'/'nudge' (paid OR free), no held state.
+    if respin_word and reel >= 0.5 and coin == 0 and lock == 0:
+        return "respin", 0.85, "ReMarks respin/move/nudge + reel + no held state"
+    # 9. respin (implicit): FREE reel re-spin with EMPTY ReMarks subordinate to a paid base
+    #    (RedHotRespin ST5). 'null' ReMarks is NOT empty -> excluded (falls to state below).
+    if cost0 and not has_remarks and reel >= 0.5 and coin == 0 and lock == 0:
+        return "respin", 0.78, "cost=0 + fresh reel + empty ReMarks (RedHotRespin)"
+    # 10. state / transition / milestone: never wins (WinCredits==0 AND WinAmount==0), no
+    #     held state. (M257 ST13 every-1000-spin milestone with 'null' ReMarks.)
+    if win == 0 and coin == 0 and lock == 0:
+        return "state", 0.85, "never wins (WC==0 & WA==0), no held state -> transition/milestone"
+    # 11. default: cost-bearing base reel
+    return "normal", 0.7 if sig["cost_pos"] > 0 else 0.5, "default base reel"
+
+
+def derive_economy(sig: dict, machine_has_paid_base: bool) -> str:
+    if sig["cost_pos"] > 0:
+        return "paid"
+    # legacy lock-respin: cost echo unreliable -> bet>0 on the sole/main loop = paid
+    if sig["bet_pos"] == sig["n"] and not machine_has_paid_base:
+        return "paid"
+    return "free"
+
+
+def derive_position(sig: dict, st: str, prev_st_counts: Counter, machine_has_paid_base: bool) -> str:
+    if sig["cost_pos"] > 0:
+        return "base"
+    nonself = sum(c for p, c in (prev_st_counts or Counter()).items() if str(p) != str(st))
+    if machine_has_paid_base and nonself > 0:
+        return "feature"
+    if not machine_has_paid_base:
+        return "base"          # sole / main loop (legacy lock-respin)
+    return "feature"
+
+
+def derive_profile_from_signals(sig: dict, *, st: str,
+                                machine_has_paid_base: bool,
+                                prev_st_counts: Counter | None = None) -> dict:
+    """Full 3-axis profile from a pre-accumulated signal dict (streaming path)."""
+    mech, conf, ev = derive_mechanism(sig)
+    return {
+        "spin_type": str(st),
+        "mechanism": mech,
+        "economy": derive_economy(sig, machine_has_paid_base),
+        "position": derive_position(sig, st, prev_st_counts or Counter(), machine_has_paid_base),
+        "confidence": conf,
+        "evidence": ev,
+    }
+
+
+def derive_spin_type_profile(rounds: list[dict], *, st: str,
+                             machine_has_paid_base: bool,
+                             prev_st_counts: Counter | None = None) -> dict:
+    """Full 3-axis profile for one (machine, ST) from its rounds."""
+    sig = aggregate_st_signals(rounds)
+    mech, conf, ev = derive_mechanism(sig)
+    return {
+        "spin_type": str(st),
+        "mechanism": mech,
+        "economy": derive_economy(sig, machine_has_paid_base),
+        "position": derive_position(sig, st, prev_st_counts or Counter(), machine_has_paid_base),
+        "confidence": conf,
+        "evidence": ev,
+    }
