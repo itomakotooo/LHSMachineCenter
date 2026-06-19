@@ -37,24 +37,23 @@ ROLE_TO_MECH: dict[str, set[str]] = {
 # Confidence floor: below this the deriver is guessing -> require explicit sign-off.
 MIN_CONFIDENCE = 0.7
 
-# ── Current fleet residual (2026-06-18, deriver v3) ─────────────────────────────
-# CONFIDENT role mislabels resolved by raw-rawdata inspection -- the declared role is WRONG;
-# the refactor (mechanism = derived) corrects them by construction:
+# ── Migration delta (2026-06-18, deriver v3, MODEL DECIDED) ─────────────────────
+# MODEL DECISION (owner): hold_respin REQUIRES an accumulating held set; a constant lock is a
+# plain respin. With that rule the deriver is FULLY confident fleet-wide (no sign-off pending).
+# These are the (machine, ST) where the hand-declared role differs from the data-derived
+# mechanism -- the refactor (mechanism = derived) corrects each by construction; the manifest
+# `role` is being REPLACED, so there is no manual edit. Validated against raw rawdata:
 PENDING_ROLE_FIXES: dict[tuple[str, str], str] = {
-    ("M257", "13"): "state",         # every-1000-spin zero-win 'null' milestone, not hold_respin
-    ("M268", "125"): "hold_respin",   # persistent coin-position JSON -> a real hold, not respin
-    ("M274", "139"): "minigame",      # win-bearing minigame settlement, not hold_respin
-    ("M252", "125"): "hold_respin",   # LockReels ACCUMULATES 1,5 -> ... -> 1,2,4,5,6,7,8 = real hold
+    ("M257", "13"): "state",         # never-wins 'null' milestone, no held state
+    ("M268", "125"): "hold_respin",   # persistent coin-position JSON -> accumulating hold
+    ("M252", "125"): "hold_respin",   # LockReels ACCUMULATES 1,5 -> ... -> 1,2,4,5,6,7,8
+    ("M274", "139"): "minigame",      # win-bearing minigame settlement
+    # constant-lock LockReSpin ST13 -> respin per the model (these locks do NOT accumulate;
+    # the accumulating ST13 machines M201/M233/M241 correctly stay hold_respin):
+    ("M227", "13"): "respin", ("M228", "13"): "respin", ("M231", "13"): "respin",
+    ("M246", "13"): "respin", ("M247", "13"): "respin", ("M277", "13"): "respin",
 }
-# OPEN DOMAIN-MODEL QUESTION (the deriver returns confidence ~0.55 -> the gate routes these to
-# sign-off; it REFUSES to guess). The respin vs hold_respin boundary is genuinely undecidable
-# from data for CONSTANT-lock machines: the fleet labels identical data inconsistently --
-# M227 ST13 'LockLines=2-' (constant) is hold_respin* but M20 ST22/23 'LockLines=3-2-' (constant)
-# is respin. Until the owner decides the MODEL (are hold_respin + respin one mechanism, or split
-# by a precise rule e.g. lock-accumulation?), every constant-lock (machine, ST) is auto-flagged
-# low-confidence -- there is NO hardcoded list; the gate detects them by confidence < MIN_CONFIDENCE.
-# Examples awaiting the model decision: M20 ST21/22/23 (labeled respin), the LockReSpin ST13
-# family M201/M227/M228/M231/M233/M241/M246/M247/M277 (labeled hold_respin), M245/M282 ST125.
+# Empty: the model decision removed the last ambiguity -- nothing awaits sign-off.
 PENDING_SIGNOFF: set[tuple[str, str]] = set()
 
 
