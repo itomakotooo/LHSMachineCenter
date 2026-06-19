@@ -162,35 +162,6 @@
         "M274"
       ]
     },
-    "topdollar_selector_settlement": {
-      "_doc": "TopDollar selector family (M12/M15/M90/M132): bonus flow is paid_trigger(ST=1, ReMarks='Trigger') -> N selector offer rounds (ST=14) showing OfferValue*bet as phantom WinCredits -> 1 settlement round (ST=15) carrying the actual payout in WinAmount (no WinCredits field). Without this rule the analyzer over-counts ST=14 phantom offers (variant 0/2 multi-pick) or under-counts ST=15 WinAmount (variant 1 single-pick where OfferValue==WinAmount happens to make the sum coincidentally match). Verified across all 13 fleet drift cases (B_overcount + C_undercount classes from drift scan). Variant 1 machines included even though our_total_win currently matches server_total_win -- phantom-offer attribution is still semantically wrong (per-SpinType / per-bucket round-level breakdown), so they get the same fix.",
-      "type": "settlement_winamount",
-      "params": {
-        "phantom_spin_types": [
-          14
-        ],
-        "settlement_spin_types": [
-          15
-        ]
-      },
-      "applies_to": [
-        "M12$TopDollarSelector$0$",
-        "M12$TopDollarSelector$1$",
-        "M12$TopDollarSelector$2$40",
-        "M15",
-        "M15$TopDollarSelector$0$",
-        "M15$TopDollarSelector$1$",
-        "M15$TopDollarSelector$2$40",
-        "M90$TopDollarSelector$0$",
-        "M90$TopDollarSelector$1$",
-        "M90$TopDollarSelector$2$40",
-        "M132$TopDollarSelector$0$",
-        "M132$TopDollarSelector$1$",
-        "M132$TopDollarSelector$2$40",
-        "M12",
-        "M90"
-      ]
-    },
     "m207_wheel_settlement": {
       "_doc": "M207 Wheel (ST2) settlement: WinCredits>0 with NO PayoutIdToWinAmount (0/263). Without this rule the 5,080,000 wheel prize (15.17% of all win) lands in _unattributed_st2 and the RTP-integrity gate fails. label_format=spin_type attributes it to a single real pid 'st2'; the 19-cell prize ladder (jackpot 110x) lives in wheel_dynamics (play-keyed 'Wheel'). PROVEN config-only in M207/02_reuse.md. EXACT M279/M283 precedent.",
       "type": "synthesize_pay_id",
@@ -659,8 +630,181 @@
       "applies_to": [
         "M246"
       ]
+    },
+    "m6_st8_settlement": {
+      "_doc": "M6 ST8 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          8
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M6"
+      ]
+    },
+    "m11_st11_settlement": {
+      "_doc": "M11 ST11 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          11
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M11"
+      ]
+    },
+    "m39_st68_settlement": {
+      "_doc": "M39 ST68 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          68
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M39"
+      ]
+    },
+    "m67_st108_settlement": {
+      "_doc": "M67 ST108 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          108
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M67"
+      ]
+    },
+    "m97_st89_settlement": {
+      "_doc": "M97 ST89 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          89
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M97"
+      ]
+    },
+    "m98_st95_settlement": {
+      "_doc": "M98 ST95 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          95
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M98"
+      ]
+    },
+    "m103_st68_settlement": {
+      "_doc": "M103 ST68 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          68
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M103"
+      ]
+    },
+    "m110_st2_settlement": {
+      "_doc": "M110 ST2 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M110"
+      ]
+    },
+    "m110_st110_settlement": {
+      "_doc": "M110 ST110 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          110
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M110"
+      ]
+    },
+    "m116_st68_settlement": {
+      "_doc": "M116 ST68 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          68
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M116"
+      ]
+    },
+    "m119_st2_settlement": {
+      "_doc": "M119 ST2 settlement (deriver-driven): bare WinCredits -> synth pid.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M119"
+      ]
+    },
+    "topdollar_selector_settlement": {
+      "_doc": "TopDollar selector family (M12/M15/M90/M132): bonus flow is paid_trigger(ST=1, ReMarks='Trigger') -> N selector offer rounds (ST=14) showing OfferValue*bet as phantom WinCredits -> 1 settlement round (ST=15) carrying the actual payout in WinAmount (no WinCredits field). Without this rule the analyzer over-counts ST=14 phantom offers (variant 0/2 multi-pick) or under-counts ST=15 WinAmount (variant 1 single-pick where OfferValue==WinAmount happens to make the sum coincidentally match). Verified across all 13 fleet drift cases (B_overcount + C_undercount classes from drift scan). Variant 1 machines included even though our_total_win currently matches server_total_win -- phantom-offer attribution is still semantically wrong (per-SpinType / per-bucket round-level breakdown), so they get the same fix.",
+      "type": "settlement_winamount",
+      "params": {
+        "phantom_spin_types": [
+          14
+        ],
+        "settlement_spin_types": [
+          15
+        ]
+      },
+      "applies_to": [
+        "M12$TopDollarSelector$0$",
+        "M12$TopDollarSelector$1$",
+        "M12$TopDollarSelector$2$40",
+        "M15",
+        "M15$TopDollarSelector$0$",
+        "M15$TopDollarSelector$1$",
+        "M15$TopDollarSelector$2$40",
+        "M90$TopDollarSelector$0$",
+        "M90$TopDollarSelector$1$",
+        "M90$TopDollarSelector$2$40",
+        "M132$TopDollarSelector$0$",
+        "M132$TopDollarSelector$1$",
+        "M132$TopDollarSelector$2$40",
+        "M12",
+        "M90"
+      ]
     }
   },
   "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)",
-  "_added_2026_06_18_wave2": "resample wave2 settlement synth rules"
+  "_added_2026_06_18_wave2": "resample wave2 settlement synth rules",
+  "_added_2026_06_18_deriver": "deriver-driven onboard settlement synth rules"
 }

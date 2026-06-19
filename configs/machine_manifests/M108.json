@@ -1,0 +1,169 @@
+{
+ "machine_id": "M108",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "101": {
+   "role": "paid_spin",
+   "play": "Normal",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "AccCredits",
+    "BetAmount",
+    "CollectCount",
+    "CostCredits",
+    "ReelSkin",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "AccCredits",
+    "BetAmount",
+    "CollectCount",
+    "CostCredits",
+    "CreditsSymbols",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "AccCredits": 1.0,
+    "CollectCount": 1.0,
+    "CreditsSymbols": 0.4112,
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "RewardLastNode": 0.1592,
+    "PayoutByPayline": 0.1592,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "PayoutIdToWinAmount": 0.1592,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "ReMarks": 0.0049
+   },
+   "observed_fields_source": "deriver-driven onboard 2026-06-18 (40000 ST101; mech=normal conf=0.7)"
+  },
+  "91": {
+   "role": "paid_spin",
+   "play": "Normal",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "FillUpTo",
+    "ReelCollect",
+    "ReelSkin",
+    "ShouldUpdateFillUpTo",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "FillUpTo",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "LockReels",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelCollect",
+    "ReelSkin",
+    "RewardLastNode",
+    "ShouldUpdateFillUpTo",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "ReelCollect": 1.0,
+    "FillUpTo": 1.0,
+    "ShouldUpdateFillUpTo": 1.0,
+    "ReMarks": 1.0,
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "RewardLastNode": 0.7043,
+    "PayoutByPayline": 0.7043,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "PayoutIdToWinAmount": 0.7043,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "LockReels": 0.2201
+   },
+   "observed_fields_source": "deriver-driven onboard 2026-06-18 (2340 ST91; mech=normal conf=0.7)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "",
+  "note": "deriver-driven"
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M108/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "Deriver-driven onboard: roles/plays from data-derived mechanism (zero agent). Robustness test of the derive-from-data architecture.",
+  "date": "2026-06-18"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   91,
+   101
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}
