@@ -142,9 +142,11 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
     is genuinely ambiguous -> the gate routes it to domain sign-off, never a silent guess."""
     f = sig["fields"]
     n = max(sig["n"], 1)
-    # "effectively free" = no real charge: never cost-bearing, OR the CostCredits is a
-    # per-record echo (wallet delta == win, the M104/M96 class) on most rounds.
-    cost0 = sig["cost_pos"] == 0 or (sig["echo_cost"] / n >= 0.5)
+    # free = the ST is never cost-bearing. (A per-record CostCredits ECHO on a truly-free spin
+    # -- the M104/M96 class -- is NOT detectable here via the wallet delta: large LastCredits
+    # values lose the cost in float precision. That economy call is left to the parser's is_paid
+    # / cost_credits_unreliable logic; the deriver does not reimplement it.)
+    cost0 = sig["cost_pos"] == 0
     win = sig["win_wc"] + sig["win_wa"]
     reel = sig["new_reel"] / n
     coin = sig["coin_json"] / n
@@ -177,15 +179,14 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
     #    lock, e.g. M252 ST125 1,5,6,7 -> ... -> 1,2,4,5,6,7,8). A genuine hold-and-respin.
     if cost0 and lock >= 0.5 and lock_grows > 0 and reel >= 0.5 and coin == 0:
         return "hold_respin", 0.85, f"held set ACCUMULATES across the burst ({sig['lock_grows']} grow-steps)"
-    # 8. CONSTANT-lock zone -- GENUINELY AMBIGUOUS (low confidence -> sign-off). A populated but
-    #    non-accumulating lock field is a held position that does NOT grow: the fleet labels this
-    #    inconsistently as hold_respin (M227 ST13 'LockLines=2-') vs respin (M20 ST22/23). The
-    #    data alone cannot decide -- the deriver REFUSES to guess and routes to domain sign-off.
-    if cost0 and lock >= 0.5 and lock_grows == 0 and reel >= 0.5 and coin == 0:
-        return "hold_respin", 0.55, "constant (non-accumulating) lock -- hold vs respin is a domain call"
-    # 9. respin: a reel re-spin marked 'respin'/'move'/'nudge', no held lock at all.
-    if respin_word and reel >= 0.5 and coin == 0 and lock == 0:
-        return "respin", 0.85, "ReMarks respin/move/nudge + reel + no lock"
+    # 8. respin: a re-spin whose held set does NOT accumulate. MODEL DECISION (owner 2026-06-18):
+    #    hold_respin REQUIRES an accumulating held set; a constant (non-growing) lock is a plain
+    #    respin -- so M20 ST22/23 + the constant-lock LockReSpin ST13 family are `respin`.
+    #    A respin is marked (respin/move/nudge, paid OR free) OR is a free reel re-spin that holds
+    #    a constant lock / wins. The guard excludes a never-wins no-lock milestone (-> state).
+    if (reel >= 0.5 and coin == 0 and lock_grows == 0
+            and (respin_word or (cost0 and (lock >= 0.5 or win > 0)))):
+        return "respin", 0.82, "reel re-spin, held set does NOT accumulate (constant/no lock) -> respin"
     # 9. respin (implicit): FREE reel re-spin with EMPTY ReMarks subordinate to a paid base
     #    (RedHotRespin ST5). 'null' ReMarks is NOT empty -> excluded (falls to state below).
     if cost0 and not has_remarks and reel >= 0.5 and coin == 0 and lock == 0:
@@ -199,10 +200,6 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
 
 
 def derive_economy(sig: dict, machine_has_paid_base: bool) -> str:
-    n = max(sig["n"], 1)
-    # cost-bearing but the charge is a per-record echo (wallet delta == win) -> actually FREE
-    if sig["cost_pos"] > 0 and sig["echo_cost"] / n >= 0.5:
-        return "free"
     if sig["cost_pos"] > 0:
         return "paid"
     # legacy lock-respin: cost echo unreliable -> bet>0 on the sole/main loop = paid

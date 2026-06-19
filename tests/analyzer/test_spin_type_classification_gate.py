@@ -101,30 +101,15 @@ def test_deriver_accumulating_lock_is_confident_hold():
     assert prof["mechanism"] == "hold_respin" and prof["confidence"] >= 0.8, prof
 
 
-def test_deriver_constant_lock_is_low_confidence_signoff():
-    """M227 ST13 (labeled hold) and M20 ST22/23 (labeled respin) both have a CONSTANT lock that
-    never grows -> the fleet is inconsistent and the data cannot decide -> the deriver returns
-    LOW confidence (< MIN_CONFIDENCE) so the gate routes it to domain sign-off, not a guess."""
+def test_deriver_constant_lock_is_respin_per_model_decision():
+    """MODEL DECISION (owner 2026-06-18): a CONSTANT (non-accumulating) lock is a plain respin,
+    NOT hold_respin (which requires an accumulating held set). So M227 ST13 'LockLines=2-' and
+    M20 ST22/23 are both respin -- the boundary is now precise + fully data-derivable."""
     rounds = [{"SpinType": 13, "CostCredits": 0, "BetAmount": 1000, "WinCredits": (i % 2) * 200,
                "ReMarks": "", "StopSymbolsByCol": "x", "LockLines": "2-", "SpinTimes": 100 + i // 2}
               for i in range(20)]
     prof = derive_spin_type_profile(rounds, st="13", machine_has_paid_base=False)
-    assert prof["confidence"] < 0.7, prof  # ambiguous -> sign-off
-
-
-def test_deriver_echo_cost_is_free_freespin():
-    """M96 ST86: CostCredits=1000 stamped every round, but the wallet (LastCredits) only moves
-    by the win (never -cost) -> the cost is a per-record ECHO -> economy free -> a real freespin."""
-    rounds = []
-    wallet = 100000.0
-    for i in range(20):
-        win = (i % 3) * 1000
-        wallet += win  # echo: wallet rises by win only, cost never subtracted
-        rounds.append({"SpinType": 86, "CostCredits": 1000, "BetAmount": 1000, "WinCredits": win,
-                       "ReMarks": "FreeSpin", "StopSymbolsByCol": "x", "LastCredits": wallet})
-    prof = derive_spin_type_profile(rounds, st="86", machine_has_paid_base=True)
-    assert prof["economy"] == "free", prof
-    assert prof["mechanism"] == "freespin", prof
+    assert prof["mechanism"] == "respin" and prof["confidence"] >= 0.7, prof
 
 
 def test_deriver_freespin_word_without_counter():
