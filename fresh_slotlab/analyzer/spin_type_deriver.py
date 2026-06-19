@@ -24,6 +24,7 @@ Precise signals validated 2026-06-18 against the fleet + adversarial cross-check
 This module is import-side-effect-free and base-EXCLUDED (no closure file imports it).
 """
 from __future__ import annotations
+import copy
 import re
 from collections import Counter
 from typing import Any
@@ -153,7 +154,14 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
     lock = sig["lock_pop"] / n
     lock_grows = sig["lock_grows"] / n
     has_remarks = bool(sig["remarks"])
-    respin_word = _remarks_has(sig, "respin", "move", "redhot", "nudge")
+    # respin marker = the spin's OWN mechanism ("respin"/"move"/"nudge"), NOT a trigger marker
+    # ("TriggerRespin" on a paid base spawns a respin elsewhere -- the base is not itself a respin).
+    respin_word = any(
+        (("respin" in k.lower() or "move" in k.lower()
+          or "redhot" in k.lower() or "nudge" in k.lower())
+         and not _TRIGGER_PREFIX.search(k))
+        for k in sig["remarks"]
+    )
 
     # 1. selector (TopDollar pick offer)
     if _SELECTOR_FIELDS & f:
@@ -217,6 +225,45 @@ def derive_position(sig: dict, st: str, prev_st_counts: Counter, machine_has_pai
     if not machine_has_paid_base:
         return "base"          # sole / main loop (legacy lock-respin)
     return "feature"
+
+
+# Map a derived top-level mechanism back to the manifest (role, play) the existing routing
+# (ROLE_ANALYSES / PLAY_ANALYSES) + plugin target-resolution understand. Identity for a machine
+# whose declared role already matches its data -> the effective manifest is byte-identical, so
+# only historically-mislabeled STs change. wheel/minigame canonicalize the PLAY (PLAY_ANALYSES
+# keys on "Wheel"/"WinMiniGame"); the rest keep their original play so the intra-ST hooks
+# (LockSymbolSpin -> lock_respin_dynamics, crazy_reel dimension) are preserved.
+MECHANISM_TO_ROLE: dict[str, str] = {
+    "normal": "paid_spin", "respin": "respin", "hold_respin": "hold_respin",
+    "freespin": "freespin", "selector": "player_choice",
+    "wheel": "settlement", "minigame": "settlement", "settlement": "settlement",
+    "state": "state",
+}
+MECHANISM_TO_PLAY: dict[str, str] = {"wheel": "Wheel", "minigame": "WinMiniGame"}
+
+
+def apply_derived_to_manifest(manifest: dict, derived_mechanisms: dict[str, str]) -> dict:
+    """Return a COPY of the manifest with each ST's (role, play) replaced by the data-derived
+    mechanism's. The SpinType-native effective manifest used to route the whole report so role
+    and plugin target-resolution agree. Byte-identical where derived == the declared role."""
+    eff = copy.deepcopy(manifest)
+    for st, blk in (eff.get("spin_types") or {}).items():
+        if not isinstance(blk, dict):
+            continue
+        mech = derived_mechanisms.get(str(st))
+        role = MECHANISM_TO_ROLE.get(str(mech)) if mech else None
+        if not role:
+            continue
+        # GUARD: never DOWNGRADE a declared free-feature role to a paid base. That is the
+        # echo-cost failure mode -- a truly-free spin whose CostCredits is a per-record echo
+        # (M96 ST86) looks cost-bearing to the deriver, which the deriver cannot see (the
+        # wallet-delta test is precision-fragile). The hand label knows better there, so keep it.
+        if role == "paid_spin" and blk.get("role") not in (None, "", "paid_spin"):
+            continue
+        blk["role"] = role
+        if str(mech) in MECHANISM_TO_PLAY:
+            blk["play"] = MECHANISM_TO_PLAY[str(mech)]
+    return eff
 
 
 def derive_profile_from_signals(sig: dict, *, st: str,

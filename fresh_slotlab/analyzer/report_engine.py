@@ -484,7 +484,61 @@ def generate_report_from_chunks(
             f"Machine '{_mech_id}' manifest is invalid: {exc}"
         ) from exc
 
-    # Derive the analysis set from spin_types (SpinType-native model).
+    # SpinType-native routing: derive each ST's MECHANISM from a SAMPLE of this machine's
+    # rawdata (first chunk) and REPLACE the hand-declared role/play with it, so the analysis
+    # routing AND each plugin's target-ST resolution agree on the data-derived classification.
+    # The mechanism is structural (stable across chunks), so one chunk suffices. The
+    # classification gate enforces role==derived, so this cannot drift. On any failure we fall
+    # back to the on-disk manifest (old behaviour, byte-identical).
+    try:
+        from fresh_slotlab.analyzer.core.parser import parse_rounds as _parse_rounds
+        from fresh_slotlab.analyzer.spin_type_deriver import (
+            new_signals as _new_sig,
+            fold_round as _fold,
+            derive_profile_from_signals as _derive_prof,
+            apply_derived_to_manifest as _apply_derived,
+        )
+        from collections import Counter as _Ctr, defaultdict as _dd
+
+        # Mode-1 only: the data-derived classification is validated against mode_1 (the
+        # primary/monitored mode); mode 2/5/7 keep the on-disk role routing (byte-identical)
+        # until the deriver is validated per-mode. A SpinType can legitimately behave
+        # differently across modes (skins), so a mode-agnostic manifest override is unsafe there.
+        _cf = sorted(Path(chunk_dir).glob("chunk_*.json")) if mode == 1 else []
+        if _cf:
+            _raw = json.loads(_cf[0].read_text(encoding="utf-8"))
+            _sigs: dict = _dd(_new_sig)
+            _prevby: dict = _dd(_Ctr)
+            _hasbase = False
+            for _robot in (_raw.get("response") or []):
+                _prev = None
+                _plc = None
+                for _r in _parse_rounds(_robot):
+                    _st = str(_r.get("SpinType"))
+                    _fold(_sigs[_st], _r, prev_last_credits=_plc)
+                    try:
+                        _plc = float(_r.get("LastCredits") or 0)
+                    except (TypeError, ValueError):
+                        _plc = None
+                    try:
+                        if float(_r.get("CostCredits") or 0) > 0:
+                            _hasbase = True
+                    except (TypeError, ValueError):
+                        pass
+                    if _prev is not None:
+                        _prevby[_st][_prev] += 1
+                    _prev = _st
+            _derived = {
+                _st: _derive_prof(_sig, st=_st, machine_has_paid_base=_hasbase,
+                                  prev_st_counts=_prevby[_st])["mechanism"]
+                for _st, _sig in _sigs.items()
+            }
+            if _derived:
+                new_manifest = _apply_derived(new_manifest, _derived)
+    except Exception:
+        pass  # fall back to the on-disk (role-declared) manifest
+
+    # Derive the analysis set from spin_types (now the data-derived effective manifest).
     analysis_set = derive_analyses(new_manifest)
 
     # Phase 5D: select this machine's feature plugins ONCE — used for BOTH the

@@ -593,7 +593,7 @@ class TestCrossMachineNonLeak:
 # c5d2199142c3 by the already-committed 58a28fd, NOT by M153). Asserting the live
 # value keeps this test honest (it goes RED iff a *closure* file changes), while
 # test_m153_does_not_flip_base_hash locks the actual M153-onboard invariant.
-_LIVE_BASE_HASH = "3ddaa183f38c"
+_LIVE_BASE_HASH = "d9fa4625b956"  # re-baselined 2026-06-18: derive-from-data routing (report_engine)
 _BRIEF_BASE_HASH = "c5d2199142c3"  # superseded by 58a28fd (M63/M104), pre-M153
 
 

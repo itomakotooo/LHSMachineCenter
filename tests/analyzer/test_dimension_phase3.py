@@ -1475,8 +1475,9 @@ class TestBaseHashUnchangedPhase3:
 
     def test_base_hash_is_c5d2199142c3(self):
         """compute_base_analyzer_version() must return the current baseline
-        3ddaa183f38c (re-baselined 2026-06-17 by the DELIBERATE paid-unit closure
-        fix in core/parser.py — SpinTimes-group paid unit; was c5d2199142c3).
+        d9fa4625b956 (re-baselined 2026-06-18 by the DELIBERATE derive-from-data
+        routing change in report_engine.py — effective manifest from data-derived
+        mechanism; was 3ddaa183f38c).
 
         If this fails, a closure file (_CLOSURE_FILES in versioning.py) was
         accidentally modified (or a new deliberate closure change needs this
@@ -1485,8 +1486,8 @@ class TestBaseHashUnchangedPhase3:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "3ddaa183f38c", (
-            f"base_hash changed from the 3ddaa183f38c baseline to {bh!r}. "
+        assert bh == "d9fa4625b956", (
+            f"base_hash changed from the d9fa4625b956 baseline to {bh!r}. "
             f"A base_hash change means a closure file was accidentally modified "
             f"(or a deliberate closure change needs this updated)."
         )

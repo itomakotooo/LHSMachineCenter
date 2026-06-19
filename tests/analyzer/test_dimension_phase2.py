@@ -1057,8 +1057,10 @@ class TestBaseHashUnchanged:
 
     def test_base_hash_is_current_baseline(self):
         """compute_base_analyzer_version() must return the current baseline
-        3ddaa183f38c (re-baselined 2026-06-17 by the DELIBERATE paid-unit closure
-        fix in core/parser.py — SpinTimes-group paid unit; was c5d2199142c3).
+        d9fa4625b956 (re-baselined 2026-06-18 by the DELIBERATE derive-from-data
+        routing change in report_engine.py — the report now derives each ST's
+        mechanism from rawdata and routes via an effective manifest instead of the
+        hand-declared role; was 3ddaa183f38c).
 
         If this fails, a closure file (_CLOSURE_FILES in versioning.py) was
         accidentally modified (or a new deliberate closure change needs this
@@ -1066,8 +1068,8 @@ class TestBaseHashUnchanged:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "3ddaa183f38c", (
-            f"base_hash changed from the 3ddaa183f38c baseline to {bh!r}. "
+        assert bh == "d9fa4625b956", (
+            f"base_hash changed from the d9fa4625b956 baseline to {bh!r}. "
             f"A base_hash change means a closure file (_CLOSURE_FILES) was "
             f"accidentally modified (or a deliberate closure change needs this updated)."
         )
@@ -1102,8 +1104,10 @@ class TestAdditiveGate:
         zero dimension-split output.
         """
         chunk_dir = self._RAWDATA / machine / f"mode_{mode}"
-        if not chunk_dir.exists():
-            pytest.skip(f"rawdata/{machine}/mode_{mode} absent")
+        if not list(chunk_dir.glob("chunk_*.json")):
+            # dir may exist but be empty (e.g. mode_7 chunks not cached on this checkout) —
+            # the report engine raises on no chunks, so skip rather than spuriously fail.
+            pytest.skip(f"rawdata/{machine}/mode_{mode} has no cached chunks")
 
         from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
         with tempfile.TemporaryDirectory() as tmp:
