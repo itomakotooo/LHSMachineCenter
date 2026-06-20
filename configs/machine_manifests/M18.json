@@ -131,8 +131,8 @@
   "note": "deriver-driven + collect-coin residual attribution"
  },
  "validation": {
-  "status": "auto",
-  "user_signed_off": false,
+  "status": "confirmed",
+  "user_signed_off": true,
   "confirmed_against": {
    "mode": 1,
    "rawdata": "M18/mode_1",
@@ -141,7 +141,9 @@
    ]
   },
   "evidence": "Collect-coin residual onboard: roles/plays from data-derived mechanism; WinResidualRule attributes the per-spin collect win (WinCredits - sum(payline pids)) without destroying the payline breakdown.",
-  "date": "2026-06-19"
+  "date": "2026-06-19",
+  "signed_off_date": "2026-06-20",
+  "gate8_note": "User gate-8 sign-off 2026-06-20: collect-coin mechanic is fully IN-ENGINE — per-spin realized (WinCredits is the round truth), coin JSON fields only itemize which symbols paid, AccCredits/CollectCount is a separate BCM metronome that never settles the residual. No out-of-engine meta-collect declared (declaration-based: 看不见=默认没有), beyond the fleet CurJackpotStoreWin test-interface-zeroing. WinResidualRule attribution verified value-agnostic: raw sum(WinCredits)==our_total==sum(payid), NO _unattributed_* fallback bucket, classification gate clean (role==derived)."
  },
  "out_of_engine_mechanics": [],
  "round_win_rule": null,
