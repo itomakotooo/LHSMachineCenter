@@ -593,20 +593,34 @@ class TestCrossMachineNonLeak:
             out[mf.stem] = json.loads(mf.read_text(encoding="utf-8"))
         return out
 
-    def test_lock_respin_dynamics_is_m104_exclusive(self, all_manifests):
-        """lock_respin_dynamics must appear in the derived analysis set of M104
-        ONLY — the LockSymbolSpin play is M104-exclusive. (The charter non-leak
-        guarantee, the same shape as test_m15_has_no_minigame_dynamics.)"""
+    def test_lock_respin_dynamics_fires_iff_lock_symbol_spin_play(self, all_manifests):
+        """lock_respin_dynamics must fire EXACTLY on the machines that DECLARE the
+        LockSymbolSpin play — the charter non-leak guarantee (the play hook, NOT a
+        role hook that would cross-fire onto every machine's paid_spin base). The
+        expected set is DERIVED from the manifests, not a hardcoded fleet snapshot,
+        so it auto-tracks every machine that genuinely carries the M104 in-line Lock
+        hold-and-respin mechanic (M104 + M240 today; both verified in rawdata:
+        ReMarks ''->'Lock' discriminator + LockSymbols positions). The invariant is
+        `fires IFF declares the play`, same shape as test_m15_has_no_minigame_dynamics."""
         from fresh_slotlab.analyzer.machine_spec import derive_analyses
-        fired_on = [
+        declares_lock_play = {
+            m for m, man in all_manifests.items()
+            if any((st or {}).get("play") == _LOCK_PLAY
+                   for st in (man.get("spin_types") or {}).values())
+        }
+        fired_on = {
             m for m, man in all_manifests.items()
             if "lock_respin_dynamics" in derive_analyses(man)
-        ]
-        assert fired_on == ["M104"], (
-            f"lock_respin_dynamics must fire on M104 ONLY; fired on {fired_on}. "
+        }
+        assert fired_on == declares_lock_play, (
+            f"lock_respin_dynamics must fire EXACTLY on the LockSymbolSpin-play "
+            f"machines {sorted(declares_lock_play)}; fired on {sorted(fired_on)}. "
             "A role hook on paid_spin (instead of the play hook) would cross-fire "
-            "onto every machine's base spin."
+            "onto every machine's base spin; a machine firing it WITHOUT declaring "
+            "the play (or declaring it WITHOUT firing) is the leak this guard catches."
         )
+        # The mechanic is real (the set is non-empty): M104 is the canonical machine.
+        assert "M104" in fired_on
 
     def test_nudge_dynamics_is_m63_exclusive(self, all_manifests):
         """The M63 sibling: nudge_dynamics (crazy_reel dimension hook) must fire
@@ -621,35 +635,43 @@ class TestCrossMachineNonLeak:
         )
 
     def test_exclusivity_guard_catches_a_leak(self, all_manifests):
-        """INJECT-BUG (non-leak): if ANOTHER machine declared the LockSymbolSpin
-        play, lock_respin_dynamics would fire on it too. Simulate that on an
-        in-memory COPY of M15's manifest and assert the exclusivity check WOULD
-        catch it (fired_on != ['M104']). This proves test_lock_respin_dynamics_is_
-        m104_exclusive is a real guard, not a tautology. No disk write — the copy
-        is discarded (the on-disk manifests are untouched)."""
+        """INJECT-BUG (non-leak): giving a machine that does NOT carry the lock
+        mechanic the LockSymbolSpin play makes lock_respin_dynamics fire on it too —
+        proving the plugin is PLAY-driven, so the `fires IFF declares the play`
+        guard above is a real check, not a tautology. Then confirm the real on-disk
+        set is unchanged. No disk write — the copy is discarded (the on-disk
+        manifests are untouched)."""
         from fresh_slotlab.analyzer.machine_spec import derive_analyses
+        real_declares = {
+            m for m, man in all_manifests.items()
+            if any((st or {}).get("play") == _LOCK_PLAY
+                   for st in (man.get("spin_types") or {}).values())
+        }
         leaked = json.loads(json.dumps(all_manifests))  # deep copy
-        # INJECT: give M15's base ST the LockSymbolSpin play.
+        # INJECT: give M15's base ST the LockSymbolSpin play (M15 has NO lock mechanic).
         first_st = next(iter(leaked["M15"]["spin_types"].values()))
         first_st["play"] = _LOCK_PLAY
-        fired_on = sorted(
+        fired_on = {
             m for m, man in leaked.items()
             if "lock_respin_dynamics" in derive_analyses(man)
-        )
-        assert fired_on != ["M104"], (
+        }
+        assert "M15" in fired_on, (
             "inject-bug: with M15 declaring LockSymbolSpin, the plugin must fire on "
-            "M15 too — the exclusivity guard MUST detect this leak"
+            "M15 too — the play hook MUST attach it to any machine declaring the play"
         )
-        assert "M15" in fired_on
+        assert fired_on == real_declares | {"M15"}, (
+            f"inject-bug: expected the real LockSymbolSpin set {sorted(real_declares)} "
+            f"plus the injected M15; got {sorted(fired_on)}"
+        )
         # REVERT is implicit (leaked is a discarded copy); confirm the real
-        # manifests are still M104-exclusive.
-        real_fired = sorted(
+        # manifests fire lock_respin_dynamics exactly on the LockSymbolSpin machines.
+        real_fired = {
             m for m, man in all_manifests.items()
             if "lock_respin_dynamics" in derive_analyses(man)
-        )
-        assert real_fired == ["M104"], (
-            "GREEN after revert: the real manifests keep lock_respin_dynamics "
-            "M104-exclusive"
+        }
+        assert real_fired == real_declares, (
+            "GREEN after revert: the real manifests fire lock_respin_dynamics exactly "
+            f"on the LockSymbolSpin-play machines {sorted(real_declares)}"
         )
 
     def test_m15_has_no_lock_respin_dynamics(self, all_manifests):
