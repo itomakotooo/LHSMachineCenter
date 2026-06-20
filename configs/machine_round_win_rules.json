@@ -802,9 +802,236 @@
         "M12",
         "M90"
       ]
+    },
+    "m24_collect_residual": {
+      "_doc": "M24 collect-coin residual: STs [46] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          46
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M24"
+      ]
+    },
+    "m18_bare_settlement": {
+      "_doc": "M18 bare settlement/feature: STs [16, 19] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          16,
+          19
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M18"
+      ]
+    },
+    "m121_collect_residual": {
+      "_doc": "M121 collect-coin residual: STs [134] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          134
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M121"
+      ]
+    },
+    "m125_collect_residual": {
+      "_doc": "M125 collect-coin residual: STs [138] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          138
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M125"
+      ]
+    },
+    "m125_bare_settlement": {
+      "_doc": "M125 bare settlement/feature: STs [2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M125"
+      ]
+    },
+    "m171_collect_residual": {
+      "_doc": "M171 collect-coin residual: STs [1, 126] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          1,
+          126
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M171"
+      ]
+    },
+    "m171_bare_settlement": {
+      "_doc": "M171 bare settlement/feature: STs [2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M171"
+      ]
+    },
+    "m243_collect_residual": {
+      "_doc": "M243 collect-coin residual: STs [126] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          126
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M243"
+      ]
+    },
+    "m254_collect_residual": {
+      "_doc": "M254 collect-coin residual: STs [154] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          154
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M254"
+      ]
+    },
+    "m254_bare_settlement": {
+      "_doc": "M254 bare settlement/feature: STs [2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M254"
+      ]
+    },
+    "m260_collect_residual": {
+      "_doc": "M260 collect-coin residual: STs [156, 157] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          156,
+          157
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M260"
+      ]
+    },
+    "m260_bare_settlement": {
+      "_doc": "M260 bare settlement/feature: STs [2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M260"
+      ]
+    },
+    "m262_collect_residual": {
+      "_doc": "M262 collect-coin residual: STs [126, 140] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          126,
+          140
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M262"
+      ]
+    },
+    "m262_bare_settlement": {
+      "_doc": "M262 bare settlement/feature: STs [2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M262"
+      ]
+    },
+    "m264_collect_residual": {
+      "_doc": "M264 collect-coin residual: STs [126, 140] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          126,
+          140
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M264"
+      ]
+    },
+    "m264_bare_settlement": {
+      "_doc": "M264 bare settlement/feature: STs [2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M264"
+      ]
+    },
+    "m271_collect_residual": {
+      "_doc": "M271 collect-coin residual: STs [126] pay paylines (PayoutIdToWinAmount) PLUS a per-spin coin-collect win that the upstream does NOT itemize per pay_id (WinCredits > sum(payline pids)). WinResidualRule keeps the payline pids and attributes the residual (WinCredits - sum(payline pids)) to st<N>_collect, closing sum(payid)==chunk_win so _unattributed_* stays 0. Per-spin realized (WinCredits is the round truth); RTP unchanged. base_hash 8dde9c4df7c5.",
+      "type": "win_residual",
+      "params": {
+        "spin_types": [
+          126
+        ],
+        "label_format": "spin_type_collect"
+      },
+      "applies_to": [
+        "M271"
+      ]
     }
   },
   "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)",
   "_added_2026_06_18_wave2": "resample wave2 settlement synth rules",
-  "_added_2026_06_18_deriver": "deriver-driven onboard settlement synth rules"
+  "_added_2026_06_18_deriver": "deriver-driven onboard settlement synth rules",
+  "_added_2026_06_19_collect_residual": "WinResidualRule collect-coin residual attribution + bare-settlement synth"
 }

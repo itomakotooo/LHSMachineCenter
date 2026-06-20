@@ -21,6 +21,7 @@ from fresh_slotlab.round_win import (
     RoundWinRule,
     SettlementWinAmountRule,
     SynthesizePayIdRule,
+    WinResidualRule,
     extract_round_payouts,
     extract_round_trigger_anchor,
     extract_round_win,
@@ -296,6 +297,112 @@ class TestSynthesizePayIdRuleValidation:
 
 
 # ---------------------------------------------------------------------
+# WinResidualRule -- collect-coin attribution (keep payline pids, add
+# residual WinCredits - sum(payid) to a collect pid). Real-rawdata
+# anchors: M24 ST46 (PigCredits), M262 ST140, M125 ST138, M254 ST154.
+# ---------------------------------------------------------------------
+
+
+class TestWinResidualRule:
+    def _rule(self) -> WinResidualRule:
+        return WinResidualRule(spin_types=[46])
+
+    def test_keeps_payline_pids_and_adds_residual(self):
+        """M24 ST46 residual round: paylines {30:10000,...} sum=10650,
+        WinCredits=15650 -> keep paylines, add st46_collect:5000."""
+        rule = self._rule()
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 15650,
+             "PayoutIdToWinAmount": {"30": 10000, "32": 100, "31": 500, "36": 50}}
+        result = rule.extract_payouts(r)
+        assert result == {"30": 10000.0, "32": 100.0, "31": 500.0,
+                          "36": 50.0, "st46_collect": 5000.0}
+        # Total credited == WinCredits (closes sum(payid)==chunk_win).
+        assert abs(sum(result.values()) - 15650.0) < 1e-9
+
+    def test_bare_win_round_whole_win_is_residual(self):
+        """Bare-win ST46 (pid empty) -> the whole WinCredits is the
+        collect residual: {st46_collect: WinCredits}. Subsumes the
+        SynthesizePayIdRule spin_type bare case."""
+        rule = self._rule()
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 63000,
+             "PayoutIdToWinAmount": {}}
+        assert rule.extract_payouts(r) == {"st46_collect": 63000.0}
+
+    def test_pure_payline_round_passes_through(self):
+        """WinCredits == sum(payline pids) -> residual <= tol -> None
+        (caller uses the round's own pids, no synthetic collect row)."""
+        rule = self._rule()
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 10650,
+             "PayoutIdToWinAmount": {"30": 10000, "32": 100, "31": 500, "36": 50}}
+        assert rule.extract_payouts(r) is None
+
+    def test_trigger_token_pid_preserved_residual_is_full_win(self):
+        """A value-0 trigger token contributes 0 to the payline sum, so
+        residual == full WinCredits; the token is preserved."""
+        rule = self._rule()
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 10500,
+             "PayoutIdToWinAmount": {"666": 0}}
+        result = rule.extract_payouts(r)
+        assert result == {"666": 0.0, "st46_collect": 10500.0}
+
+    def test_zero_win_no_attribution(self):
+        rule = self._rule()
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 0,
+             "PayoutIdToWinAmount": {}}
+        assert rule.extract_payouts(r) is None
+
+    def test_unconfigured_spin_type_no_opinion(self):
+        rule = self._rule()
+        r = {"SpinType": 45, "CostCredits": 1000, "WinCredits": 12000,
+             "PayoutIdToWinAmount": {"6": 5000}}
+        assert rule.extract_payouts(r) is None
+
+    def test_over_attributed_round_passes_through(self):
+        """If sum(pid) > WinCredits (residual negative) -> None, never
+        a negative collect row."""
+        rule = self._rule()
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 5000,
+             "PayoutIdToWinAmount": {"6": 8000}}
+        assert rule.extract_payouts(r) is None
+
+    def test_spin_type_label_format(self):
+        rule = WinResidualRule(spin_types=[46], label_format="spin_type")
+        r = {"SpinType": 46, "CostCredits": 0, "WinCredits": 63000,
+             "PayoutIdToWinAmount": {}}
+        assert rule.extract_payouts(r) == {"st46": 63000.0}
+
+    def test_extract_win_is_passthrough(self):
+        """Residual rule only re-attributes pids -- chunk_win stays
+        WinCredits (RTP unchanged)."""
+        rule = self._rule()
+        r = {"SpinType": 46, "WinCredits": 15650}
+        assert rule.extract_win(r) is None
+
+    def test_string_spin_type_coerced(self):
+        rule = self._rule()
+        r = {"SpinType": "46", "WinCredits": 10500, "PayoutIdToWinAmount": {}}
+        assert rule.extract_payouts(r) == {"st46_collect": 10500.0}
+
+    def test_non_dict_input_no_opinion(self):
+        rule = self._rule()
+        assert rule.extract_payouts(None) is None
+        assert rule.extract_payouts(42) is None
+
+    def test_invalid_label_format_raises(self):
+        with pytest.raises(ValueError, match="label_format"):
+            WinResidualRule(spin_types=[46], label_format="multiplier")
+
+    def test_collect_label_is_not_a_fallback_bucket(self):
+        """The minted label must NOT start with a reserved fallback
+        prefix (_unattributed_/_other/_default/_misc) or the
+        rtp-integrity Layer-2 gate would flag it."""
+        rule = self._rule()
+        r = {"SpinType": 46, "WinCredits": 10500, "PayoutIdToWinAmount": {}}
+        (label,) = rule.extract_payouts(r).keys()
+        assert not label.startswith(("_unattributed_", "_other", "_default", "_misc"))
+
+
+# ---------------------------------------------------------------------
 # extract_round_win / extract_round_payouts dispatch
 # ---------------------------------------------------------------------
 
@@ -453,10 +560,29 @@ class TestLoadRulesForMachine:
 def test_registry_has_known_types():
     assert "settlement_winamount" in RULE_REGISTRY
     assert "synthesize_pay_id" in RULE_REGISTRY
+    assert "win_residual" in RULE_REGISTRY
     assert "bcm_cycle_anchor" in RULE_REGISTRY
     assert RULE_REGISTRY["settlement_winamount"] is SettlementWinAmountRule
     assert RULE_REGISTRY["synthesize_pay_id"] is SynthesizePayIdRule
+    assert RULE_REGISTRY["win_residual"] is WinResidualRule
     assert RULE_REGISTRY["bcm_cycle_anchor"] is BCMCycleAnchorRule
+
+
+def test_load_win_residual_rule_from_config():
+    config = {
+        "rules": {
+            "m24_freespin_collect": {
+                "type": "win_residual",
+                "params": {"spin_types": [46], "label_format": "spin_type_collect"},
+                "applies_to": ["M24"],
+            }
+        }
+    }
+    rules = load_rules_for_machine("M24", config)
+    assert len(rules) == 1
+    assert isinstance(rules[0], WinResidualRule)
+    # Not applied to a machine outside applies_to.
+    assert load_rules_for_machine("M99", config) == []
 
 
 # ---------------------------------------------------------------------
