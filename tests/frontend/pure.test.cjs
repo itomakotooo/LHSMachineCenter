@@ -1178,9 +1178,10 @@ test("buildClientEvent: click includes count + mode + ci", () => {
   assert.equal(ev.ts, "2026-04-17T12:00:00Z");
   assert.equal(ev.level, "info");
   assert.equal(ev.source, "ui");
+  assert.equal(ev.op, "sample");
+  assert.equal(ev.mode, 1);                 // mode is a structured field now
   assert.ok(ev.text.includes("开始采样"));
   assert.ok(ev.text.includes("3 台"));
-  assert.ok(ev.text.includes("mode=1"));
   assert.ok(ev.text.includes("0.5pp"));
 });
 
@@ -1283,12 +1284,14 @@ test("buildClientEvent: md5_refresh_done without names falls back to count-only"
   assert.ok(!ev.text.endsWith(" · "), "no trailing separator");
 });
 
-test("buildClientEvent: md5_refresh_done with no updates is level=info", () => {
+test("buildClientEvent: md5_refresh_done with no updates is level=ok", () => {
+  // No-change is a confirmed-good outcome: level "ok" (green) so the icon
+  // matches the level (the old code showed a ✓ but stayed neutral "info").
   const ev = PURE.buildClientEvent(
     "md5_refresh_done", { fetched: 253, updated: 0 },
     "2026-04-21T00:00:00Z",
   );
-  assert.equal(ev.level, "info");
+  assert.equal(ev.level, "ok");
   assert.ok(ev.text.includes("253"));
   assert.ok(ev.text.includes("无变更"));
 });
@@ -1301,8 +1304,9 @@ test("buildClientEvent: generate_report_start renders in-progress marker", () =>
     "2026-04-22T00:00:00Z",
   );
   assert.equal(ev.level, "info");
-  assert.ok(ev.text.includes("M1"));
-  assert.ok(ev.text.includes("mode 1"));
+  assert.equal(ev.op, "generate");
+  assert.equal(ev.machine, "M1");           // machine + mode are fields now
+  assert.equal(ev.mode, 1);
   assert.ok(ev.text.includes("生成 Report") || ev.text.includes("生成"));
 });
 
@@ -1312,11 +1316,10 @@ test("buildClientEvent: generate_report_done shows RTP + CI summary", () => {
     { machine: "M1", mode: 1, rtp_pct: 92.35, halfwidth_pp: 0.48 },
     "2026-04-22T00:00:00Z",
   );
-  assert.equal(ev.level, "info");
-  assert.ok(ev.text.includes("M1"));
+  assert.equal(ev.level, "ok");             // completed → ok (drives the green ✓)
+  assert.equal(ev.machine, "M1");
   assert.ok(ev.text.includes("92.35%"));
   assert.ok(ev.text.includes("±0.48pp"));
-  assert.ok(ev.text.includes("✓"));
 });
 
 test("buildClientEvent: generate_report_done with missing metrics uses em-dash", () => {
@@ -1327,7 +1330,7 @@ test("buildClientEvent: generate_report_done with missing metrics uses em-dash",
     { machine: "M1", mode: 1 },
     "2026-04-22T00:00:00Z",
   );
-  assert.equal(ev.level, "info");
+  assert.equal(ev.level, "ok");
   assert.ok(ev.text.includes("—"));
 });
 
@@ -1337,9 +1340,8 @@ test("buildClientEvent: generate_report_failed is level=error with reason", () =
     { machine: "M1", mode: 1, error: "analyzer exit_code=1" },
     "2026-04-22T00:00:00Z",
   );
-  assert.equal(ev.level, "error");
-  assert.ok(ev.text.includes("✗"));
-  assert.ok(ev.text.includes("M1"));
+  assert.equal(ev.level, "error");          // level drives the ✗ icon now
+  assert.equal(ev.machine, "M1");
   assert.ok(ev.text.includes("analyzer exit_code=1"));
 });
 
@@ -1367,9 +1369,57 @@ test("buildClientEvent: md5_refresh_failed is level=warn with reason", () => {
 
 test("buildClientEvent: md5_refresh_done with missing data doesn't crash", () => {
   // Defensive: runtime might fire this before fetched/updated are set.
+  // updated defaults to 0 → no-change → level "ok" (matches the ✓ icon).
   const ev = PURE.buildClientEvent("md5_refresh_done", null, "2026-04-21T00:00:00Z");
-  assert.equal(ev.level, "info");
+  assert.equal(ev.level, "ok");
   assert.ok(ev.text.includes("0"));  // "0 台"
+});
+
+test("buildClientEvent: canonical schema — clean text, structured fields, no embedded icon", () => {
+  // The unified-log invariant: text carries NO icon and NO baked-in
+  // "machine mode N"; those are the level + machine + mode + op FIELDS.
+  const ev = PURE.buildClientEvent(
+    "generate_report_start", { machine: "M278", mode: 1 }, "2026-06-22T00:00:00Z");
+  assert.equal(ev.op, "generate");
+  assert.equal(ev.machine, "M278");
+  assert.equal(ev.mode, 1);
+  for (const icon of ["✓", "✗", "⋯", "⏱", "⟳", "▷", "⚠"]) {
+    assert.ok(!ev.text.includes(icon), `text must not embed icon ${icon}: ${ev.text}`);
+  }
+  assert.ok(!ev.text.includes("M278"), "machine must not be baked into text");
+});
+
+test("normalizeBackendEvent: chunk progress → canonical info row", () => {
+  const c = PURE.normalizeBackendEvent({
+    ts: "2026-06-22T01:00:00Z", model_id: "analyzer", machine: "M84", mode: 1,
+    event: "chunk_progress", chunks_completed: 12, total_spins: 60000, current_halfwidth_pp: 0.8,
+  });
+  assert.equal(c.level, "info");
+  assert.equal(c.op, "sample");
+  assert.equal(c.machine, "M84");
+  assert.equal(c.mode, 1);
+  assert.ok(c.text.includes("chunks 12"));
+  assert.ok(c.text.includes("CI±0.80pp"));
+});
+
+test("normalizeBackendEvent: completed → ok; failed → error with long-error detail", () => {
+  const done = PURE.normalizeBackendEvent({
+    ts: "t", model_id: "generate-report", machine: "M1", mode: 1, event: "completed" });
+  assert.equal(done.level, "ok");
+  assert.equal(done.op, "generate");
+  const longErr = "boom ".repeat(40);
+  const fail = PURE.normalizeBackendEvent({
+    ts: "t", model_id: "analyzer", machine: "M1", mode: 1, run_status: "failed", error_message: longErr });
+  assert.equal(fail.level, "error");
+  assert.ok(fail.text.length <= 105);          // truncated for the row
+  assert.equal(fail.detail, longErr);          // full error in the expandable detail
+});
+
+test("logOpLabel: maps lanes to stable chips", () => {
+  assert.equal(PURE.logOpLabel("sample"), "采样");
+  assert.equal(PURE.logOpLabel("generate"), "生成");
+  assert.equal(PURE.logOpLabel("md5"), "md5");
+  assert.equal(PURE.logOpLabel("zzz"), "zzz");  // unknown lane passes through
 });
 
 test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {

@@ -2307,119 +2307,118 @@ function collectSystemWarnings(opts) {
  * @param {object} data - kind-specific payload
  * @param {string} [nowIso] - ISO timestamp (tests inject; production omits → uses new Date().toISOString())
  */
+// Map a client-event ``kind`` to its operation lane (the unified-log ``op``
+// tag). Lets the one renderer show a consistent source chip (采样 / 生成 / md5)
+// instead of every client event reading as a generic "ui".
+const CLIENT_KIND_OP = {
+  click: "sample", submit: "sample", batch_created: "sample",
+  submit_failed: "sample", polling_started: "sample", resume_submitted: "sample",
+  md5_refresh_start: "md5", md5_refresh_done: "md5", md5_refresh_failed: "md5",
+  generate_report_start: "generate", generate_report_done: "generate",
+  generate_report_failed: "generate", generate_report_timeout: "generate",
+};
+
 function buildClientEvent(kind, data, nowIso) {
+  // Canonical log-entry schema (the unified-log redesign): every entry —
+  // client OR backend — is {ts, level, source, op, machine, mode, text, detail}.
+  // ``level`` (info|ok|warn|error) drives the row icon + colour; ``op`` + machine
+  // + mode are STRUCTURED fields (tags), so ``text`` is the clean message ONLY —
+  // no embedded icon, no baked-in "machine mode N". The single row renderer
+  // composes them. Both client + normalizeBackendEvent emit this same shape.
   const ts = nowIso || new Date().toISOString();
-  const modeStr = data && data.mode != null ? `mode=${data.mode}` : "";
-  const ciStr = data && data.ci != null
-    ? (data.ci === 0 ? "fuzzy" : data.ci + "pp")
-    : "";
-  const detail = [modeStr, ciStr ? `ci=${ciStr}` : ""].filter(Boolean).join(" · ");
+  const op = CLIENT_KIND_OP[kind] || "ui";
+  const machine = (data && data.machine) || "";
+  const mode = (data && data.mode != null) ? data.mode : null;
+  const ci = data && data.ci != null
+    ? (data.ci === 0 ? "fuzzy" : data.ci + "pp") : "";
+  const base = { ts, source: "ui", op, machine, mode };
   switch (kind) {
     case "click":
-      return {
-        ts, level: "info", source: "ui",
-        text: `▷ 开始采样 · 已选 ${(data && data.count) || 0} 台${detail ? " · " + detail : ""}`,
-      };
+      return { ...base, level: "info",
+        text: `开始采样 · 已选 ${(data && data.count) || 0} 台${ci ? " · ci=" + ci : ""}` };
     case "submit":
-      return { ts, level: "info", source: "ui", text: "⋯ 提交批次请求…" };
+      return { ...base, level: "info", text: "提交批次请求…" };
     case "batch_created":
-      return {
-        ts, level: "info", source: "ui",
-        text: `⋓ 批次 ${(data && data.batchId ? data.batchId.slice(0, 8) : "?")} 已创建`,
-      };
+      return { ...base, level: "info",
+        text: `批次 ${(data && data.batchId ? data.batchId.slice(0, 8) : "?")} 已创建` };
     case "submit_failed":
-      return {
-        ts, level: "error", source: "ui",
-        text: `✗ 提交失败: ${(data && data.error) || "unknown"}`,
-      };
+      return { ...base, level: "error", text: `提交失败: ${(data && data.error) || "unknown"}` };
     case "polling_started":
-      return { ts, level: "info", source: "ui", text: "◷ 开始轮询进度…" };
+      return { ...base, level: "info", text: "开始轮询进度…" };
+    case "resume_submitted":
+      return { ...base, level: "info", text: "继续未完成项…" };
     case "md5_refresh_start":
-      return { ts, level: "info", source: "ui", text: "⟳ md5 刷新中…" };
+      return { ...base, level: "info", text: "md5 刷新中…" };
     case "md5_refresh_done": {
       const fetched = (data && data.fetched != null) ? data.fetched : 0;
       const updated = (data && data.updated != null) ? data.updated : 0;
       if (updated > 0) {
-        // Fleet shifted — warn so the operator notices. Include
-        // machine names so they can immediately tell if THEIR
-        // working machine is one of them. Before names were shown
-        // (2026-04-21), operators would see "3/253 台有变更" after
-        // restart and reasonably assume their just-sampled M1 had
-        // drifted when actually some unrelated machine shifted.
-        // Truncate at 5 names to keep the line scannable; full
-        // list is still in the response body for debugging.
-        const names = (data && Array.isArray(data.updated_machines))
-          ? data.updated_machines
-          : [];
-        let namePart = "";
-        if (names.length > 0) {
-          const shown = names.slice(0, 5).join(", ");
-          const extra = names.length > 5 ? ` (+${names.length - 5})` : "";
-          namePart = ` · ${shown}${extra}`;
-        }
-        return {
-          ts, level: "warn", source: "ui",
-          text: "✓ md5 刷新: " + updated + "/" + fetched + " 台有变更" + namePart,
-        };
+        // Fleet shifted — warn so the operator notices, and name the machines so
+        // they can tell whether THEIR working machine drifted (truncate at 5).
+        const names = (data && Array.isArray(data.updated_machines)) ? data.updated_machines : [];
+        const namePart = names.length
+          ? ` · ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` (+${names.length - 5})` : ""}` : "";
+        return { ...base, level: "warn", text: `md5 刷新: ${updated}/${fetched} 台有变更${namePart}` };
       }
-      return {
-        ts, level: "info", source: "ui",
-        text: "✓ md5 刷新: " + fetched + " 台无变更",
-      };
+      return { ...base, level: "ok", text: `md5 刷新: ${fetched} 台无变更` };
     }
     case "md5_refresh_failed":
-      return {
-        ts, level: "warn", source: "ui",
-        text: "⚠ md5 刷新失败（沿用本地缓存）: " + ((data && data.error) || "unknown"),
-      };
-    case "generate_report_start": {
-      // 2026-04-22: click on rwtree ⟳ 生成 Report must produce an
-      // immediate activity-log entry. Before the fix the click
-      // silently kicked off a 30-90s analyzer replay with no log
-      // trail — user "没法确认状态".
-      const m = (data && data.machine) || "?";
-      const mo = (data && data.mode != null) ? data.mode : "?";
-      return {
-        ts, level: "info", source: "ui",
-        text: `⋯ 生成 Report · ${m} mode ${mo} …`,
-      };
-    }
+      return { ...base, level: "warn",
+        text: `md5 刷新失败（沿用本地缓存）: ${(data && data.error) || "unknown"}` };
+    case "generate_report_start":
+      return { ...base, level: "info", text: "生成 Report …" };
     case "generate_report_done": {
-      const m = (data && data.machine) || "?";
-      const mo = (data && data.mode != null) ? data.mode : "?";
-      const rtp = (data && data.rtp_pct != null)
-        ? Number(data.rtp_pct).toFixed(2) + "%"
-        : "—";
-      const ci = (data && data.halfwidth_pp != null)
-        ? "±" + Number(data.halfwidth_pp).toFixed(2) + "pp"
-        : "—";
-      return {
-        ts, level: "info", source: "ui",
-        text: `✓ 生成完成 · ${m} mode ${mo} · RTP ${rtp} · CI ${ci}`,
-      };
+      const rtp = (data && data.rtp_pct != null) ? Number(data.rtp_pct).toFixed(2) + "%" : "—";
+      const ciStr = (data && data.halfwidth_pp != null) ? "±" + Number(data.halfwidth_pp).toFixed(2) + "pp" : "—";
+      return { ...base, level: "ok", text: `生成完成 · RTP ${rtp} · CI ${ciStr}` };
     }
-    case "generate_report_failed": {
-      const m = (data && data.machine) || "?";
-      const mo = (data && data.mode != null) ? data.mode : "?";
-      const err = (data && data.error) || "unknown";
-      return {
-        ts, level: "error", source: "ui",
-        text: `✗ 生成失败 · ${m} mode ${mo} · ${err}`,
-      };
-    }
-    case "generate_report_timeout": {
-      const m = (data && data.machine) || "?";
-      const mo = (data && data.mode != null) ? data.mode : "?";
-      const last = (data && data.last_status) || "unknown";
-      return {
-        ts, level: "warn", source: "ui",
-        text: `⏱ 生成轮询超时 · ${m} mode ${mo} · last=${last}（后台可能仍在跑）`,
-      };
-    }
+    case "generate_report_failed":
+      return { ...base, level: "error", text: `生成失败 · ${(data && data.error) || "unknown"}` };
+    case "generate_report_timeout":
+      return { ...base, level: "warn",
+        text: `生成轮询超时 · last=${(data && data.last_status) || "unknown"}（后台可能仍在跑）` };
     default:
-      return { ts, level: "info", source: "ui", text: `? ${kind}` };
+      return { ...base, level: "info", text: String(kind) };
   }
 }
+
+// Normalize a BACKEND run event (from /api/events: model_id / machine / mode /
+// event / chunks_completed / current_halfwidth_pp / stop_reason / error_message
+// / run_status / ts) into the SAME canonical schema as buildClientEvent, so the
+// one row renderer handles both. ``op`` maps model_id → lane; ``text`` is the
+// clean progress/outcome message; ``detail`` carries a long error for expand.
+const MODEL_ID_OP = { "generate-report": "generate", "generate_report": "generate" };
+function normalizeBackendEvent(ev) {
+  ev = ev || {};
+  const ts = ev.ts || "";
+  const level = ev.run_status === "failed" ? "error"
+    : ev.event === "completed" ? "ok"
+    : ev.error_message ? "warn" : "info";
+  const mid = String(ev.model_id || "");
+  const op = MODEL_ID_OP[mid] || (mid.includes("generate") ? "generate" : mid ? "sample" : "ui");
+  let text = "";
+  let detail = "";
+  if (ev.chunks_completed != null) {
+    text = `chunks ${ev.chunks_completed}`;
+    if (ev.total_spins != null) text += ` · ${Number(ev.total_spins).toLocaleString()} spins`;
+    if (ev.current_halfwidth_pp != null) text += ` · CI±${Number(ev.current_halfwidth_pp).toFixed(2)}pp`;
+  } else if (ev.stop_reason) {
+    text = `stop: ${ev.stop_reason}`;
+  } else if (ev.error_message) {
+    const e = String(ev.error_message);
+    text = e.length > 100 ? e.slice(0, 100) + "…" : e;
+    if (e.length > 100) detail = e;
+  } else {
+    text = String(ev.event || "");
+  }
+  return { ts, level, source: "backend", op,
+    machine: ev.machine || "", mode: (ev.mode != null ? ev.mode : null), text, detail };
+}
+
+// One label per op lane for the source chip (the single row format). Keeps the
+// chip text consistent whether the entry came from the client or the backend.
+const OP_LABEL = { sample: "采样", generate: "生成", md5: "md5", delete: "删除", autotune: "调参", ui: "ui", "": "" };
+function logOpLabel(op) { return OP_LABEL[op] != null ? OP_LABEL[op] : String(op || ""); }
 
 /**
  * Format a chunk-level event (from analyzer progress.jsonl) as a
@@ -2864,6 +2863,8 @@ const PURE = {
   computeLibPercentile,
   formatLibRank,
   buildClientEvent,
+  normalizeBackendEvent,
+  logOpLabel,
   formatChunkEventText,
   computeElapsedSeconds,
   computeInflightChunks,

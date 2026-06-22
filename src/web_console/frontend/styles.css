@@ -2888,19 +2888,16 @@ button.small-btn.active, .small-btn.active {
   font-size: 11px;
   line-height: 1.5;
 }
+/* Unified log row (2026-06-22 log redesign): ONE format for every entry —
+   client OR backend — normalized to {ts, level, op, machine, text}. Columns:
+   time · op-lane · machine · message. Level drives the row colour (ev-* below);
+   the old 2-col .activity-line-ui split is gone. */
 .activity-line {
   display: grid;
-  grid-template-columns: 60px 120px 100px 110px 1fr;
+  grid-template-columns: 58px 60px 86px 1fr;
   gap: 6px;
   padding: 1px 0;
   color: #334155;
-}
-/* Client-sourced UI rows don't fit the 5-col backend schema (op/
-   mach/kind columns would be empty). Dedicated 2-col layout keeps
-   the ts aligned with backend rows while giving the full-text line
-   room to breathe. */
-.activity-line.activity-line-ui {
-  grid-template-columns: 60px 1fr;
 }
 .activity-line.ev-ok { color: #15803d; }
 .activity-line.ev-fail { color: #b91c1c; background: #fef2f2; }
@@ -2908,8 +2905,7 @@ button.small-btn.active, .small-btn.active {
 .activity-ts { color: #64748b; }
 .activity-op { color: #6d28d9; font-weight: 600; }
 .activity-mach { color: #1e40af; }
-.activity-kind { color: #475569; }
-.activity-tail { color: #64748b; }
+.activity-tail { color: #334155; }
 .op-chip {
   display: inline-block;
   background: #ddd6fe;

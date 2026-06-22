@@ -9823,48 +9823,28 @@ function _renderActivityStrip() {
     : `<div class="muted" style="padding:8px 4px;font-size:12px">无近期事件</div>`;
 }
 
+// Render ONE canonical log row for every entry — client OR backend. Client
+// events (source:"ui") are already canonical (PURE.buildClientEvent); backend
+// run events are normalized via PURE.normalizeBackendEvent. Both yield
+// {ts, level, op, machine, mode, text, detail}, rendered as: time · op-lane ·
+// machine · message, coloured by level. (Replaces the old ui-vs-backend split.)
 function _formatActivityRow(ev) {
-  const tsShort = (ev.ts || "").substring(11, 19);
-  // Client-sourced event (pushClientEvent → state.activityEvents).
-  // Carries only {ts, level, source=ui, text}; render as a compact
-  // two-col line (ts + text) coloured by level. The 5-col backend
-  // schema (op/mach/kind) doesn't apply and leaves sparse columns
-  // if forced — so UI rows use the dedicated ``activity-line-ui``
-  // layout class (CSS: grid-template-columns: 60px 1fr).
-  if (ev.source === "ui") {
-    const level = ev.level || "info";
-    const cls = level === "warn" ? "ev-warn"
-      : level === "error" ? "ev-fail"
-      : level === "ok" ? "ev-ok"
-      : "";
-    return `<div class="activity-line activity-line-ui ${cls}">`
-      + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
-      + `<span class="activity-tail">${_escHtml(ev.text || "")}</span>`
-      + `</div>`;
-  }
-  // Backend event — per-run progress / completion / failure.
-  const mach = ev.machine ? `${ev.machine} mode${ev.mode}` : "";
-  const op = ev.model_id || "";
-  const kind = ev.event || "";
-  let tail = "";
-  if (ev.chunks_completed != null) {
-    tail += `chunks ${ev.chunks_completed}`;
-    if (ev.total_spins != null) tail += ` · ${ev.total_spins.toLocaleString()} spins`;
-    if (ev.current_halfwidth_pp != null)
-      tail += ` · CI±${Number(ev.current_halfwidth_pp).toFixed(2)}pp`;
-  } else if (ev.stop_reason) {
-    tail = `stop: ${_escHtml(ev.stop_reason)}`;
-  } else if (ev.error_message) {
-    tail = `⚠ ${_escHtml(String(ev.error_message).substring(0, 80))}`;
-  }
-  const statusClass = ev.run_status === "failed" ? "ev-fail"
-    : ev.event === "completed" ? "ev-ok" : "";
-  return `<div class="activity-line ${statusClass}">`
+  const c = (ev && ev.source === "ui") ? ev : PURE.normalizeBackendEvent(ev);
+  const tsShort = (c.ts || "").substring(11, 19);
+  const level = c.level || "info";
+  const cls = level === "warn" ? "ev-warn"
+    : level === "error" ? "ev-fail"
+    : level === "ok" ? "ev-ok"
+    : "";
+  const opLabel = PURE.logOpLabel(c.op);
+  const mach = c.machine
+    ? (c.mode != null ? `${c.machine}·m${c.mode}` : String(c.machine))
+    : "";
+  return `<div class="activity-line ${cls}">`
     + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
-    + `<span class="activity-op">${_escHtml(op)}</span>`
+    + `<span class="activity-op">${_escHtml(opLabel)}</span>`
     + `<span class="activity-mach">${_escHtml(mach)}</span>`
-    + `<span class="activity-kind">${_escHtml(kind)}</span>`
-    + `<span class="activity-tail">${tail}</span>`
+    + `<span class="activity-tail">${_escHtml(c.text || "")}</span>`
     + `</div>`;
 }
 
