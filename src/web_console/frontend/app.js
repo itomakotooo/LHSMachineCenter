@@ -641,7 +641,7 @@ function setKpi(id, text, tone = "neutral", compare = null) {
 
 function clearSummaryPanels() {
   byId("interpretationText").textContent = fmt("noInterpret");
-  byId("eventsText").textContent = fmt("noEvents");
+  { const _ev = byId("eventsText"); if (_ev) _ev.textContent = fmt("noEvents"); }
   if (!state.autoTuneRunning) {
     const autoEl = byId("autotuneMeta");
     if (autoEl) autoEl.textContent = fmt("noAutoTune");
@@ -8922,7 +8922,10 @@ async function refreshCurrentRun() {
   setKpi("kpiSpins", latest.total_spins != null ? fInt(latest.total_spins) : "N/A");
 
   const events = (await apiGet(`/api/runs/${state.currentRunId}/progress`)).events || [];
-  byId("eventsText").textContent = events.length ? events.slice(-80).map((e) => JSON.stringify(e)).join("\n") : fmt("noEvents");
+  // 运行事件 (raw-jsonl #eventsText) retired in the log redesign (P3): the unified
+  // 活动日志流 shows these backend events in readable form, filterable by machine.
+  // Guarded so this is a no-op once the panel markup is gone.
+  { const _ev = byId("eventsText"); if (_ev) _ev.textContent = events.length ? events.slice(-80).map((e) => JSON.stringify(e)).join("\n") : fmt("noEvents"); }
 
   // Per-run failures / cancellations are shown inside runMeta (above).
   // Global warning area stays reserved for system + model notices.

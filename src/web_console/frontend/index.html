@@ -299,14 +299,11 @@
             <div id="reelMarginalBySpinTypeBody"></div>
           </section>
 
-          <!-- Events log sits at the bottom -- it's high-volume, low-
-               readability raw jsonl that the operator only consults
-               when something looks off. Drilldowns and assessment go
-               above it. -->
-          <section class="panel logs">
-            <h2 data-i18n="panelEvents">运行事件</h2>
-            <pre id="eventsText" class="pre"></pre>
-          </section>
+          <!-- 运行事件 (raw-jsonl events log) retired in the log redesign (P3):
+               the unified 活动日志流 (管理 tab) shows these backend run events in
+               readable form, filterable by machine — so the raw window was pure,
+               low-readability duplication. Its writers in app.js are guarded
+               no-ops now (byId returns null here). -->
 
         </div>
       </section>
