@@ -51,7 +51,6 @@ Inject-bug → RED → revert → GREEN (TestInjectBugProof):
 """
 from __future__ import annotations
 
-import copy
 import tempfile
 from pathlib import Path
 
@@ -471,27 +470,29 @@ class TestM15NotLeaked:
 # ---------------------------------------------------------------------------
 
 class TestInjectBugProof:
-    def test_inject_strip_respin_role_removes_respin_dynamics(self, monkeypatch):
-        """INJECT: M42's ST50 manifest `role` is flipped respin -> paid_spin. The REAL
+    def test_inject_unwire_respin_role_darkens_respin_dynamics(self, monkeypatch):
+        """INJECT: unwire the respin role->analysis mapping (ROLE_ANALYSES["respin"]).
         derive_analyses then no longer attaches respin_dynamics → the section vanishes
         from the report. VALUE-AGNOSTIC (the missing section is the signature, not a
-        number)."""
+        number).
+
+        NOTE (derive-from-data): flipping ST50's manifest `role` would NOT prove
+        anything — the deriver re-derives the mechanism from rawdata and
+        apply_derived_to_manifest restores `respin` (role is no longer the source of
+        truth, per project_derive_from_data). The wiring that ATTACHES the analysis is
+        ROLE_ANALYSES, so unwiring that key is the real inject — same correction
+        applied to test_m149_onboarding's respin inject."""
         if not _has_chunks(_M42_CHUNK_DIR):
             pytest.skip("M42 cached chunks not present")
 
         import fresh_slotlab.analyzer.machine_spec as ms_mod
 
-        _orig_load = ms_mod.load_manifest
-
-        def _load_role_flipped(machine_id, manifests_root=None, *args, **kwargs):
-            man = _orig_load(machine_id, manifests_root, *args, **kwargs)
-            if str(machine_id) == "M42":
-                man = copy.deepcopy(man)
-                # BUG: M42's manifest stops declaring the respin role on ST50.
-                man["spin_types"]["50"]["role"] = "paid_spin"
-            return man
-
-        monkeypatch.setattr(ms_mod, "load_manifest", _load_role_flipped)
+        # Precondition: respin_dynamics IS wired to the respin role.
+        assert "respin_dynamics" in ms_mod.ROLE_ANALYSES.get("respin", ()), (
+            "precondition: ROLE_ANALYSES['respin'] must wire respin_dynamics"
+        )
+        # BUG: the respin role is no longer wired to any analysis.
+        monkeypatch.delitem(ms_mod.ROLE_ANALYSES, "respin")
 
         from fresh_slotlab.analyzer.report_engine import generate_report_from_chunks
 
@@ -505,9 +506,10 @@ class TestInjectBugProof:
             pi = summary["player_impact"]
             # RED — respin_dynamics is no longer derived → absent from the report.
             assert "respin_dynamics" not in pi, (
-                "inject-bug: with ST50 role flipped off `respin`, respin_dynamics must "
-                "NOT be derived/emitted. If it is still present, the role wiring is not "
-                "what attaches it — the delivered-metrics guard would be a false green."
+                "inject-bug: with the respin role unwired from ROLE_ANALYSES, "
+                "respin_dynamics must NOT be derived/emitted. If it is still present, "
+                "ROLE_ANALYSES is not what attaches it — the delivered-metrics guard "
+                "would be a false green."
             )
         # monkeypatch auto-reverts here — the module-scoped GREEN fixture is unaffected.
 
