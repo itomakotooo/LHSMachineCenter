@@ -26,8 +26,14 @@ ROLE_TO_MECH: dict[str, set[str]] = {
     "paid_spin": {"normal", "hold_respin", "respin"},
     "respin": {"respin"},
     # freespin + hold_respin share the granted-free-session plugin family (FREESPIN_FAMILY_ROLES),
-    # so either role accepts either derived mechanism.
-    "hold_respin": {"hold_respin", "freespin"},
+    # so either role accepts either derived mechanism. hold_respin ALSO accepts a derived `respin`:
+    # the hold_respin-vs-respin distinction (does the held set ACCUMULATE?) is a DOMAIN call the
+    # user confirms at gate-8 — a GRANTED constant-lock respin chain with a pity/grant trigger
+    # (M277 + the M227/M228/M231/M246/M247 LockReSpin family) is a hold_respin BONUS even though
+    # derive_mechanism's lock-GROWTH heuristic reads it as respin (too coarse for granted respin
+    # chains; user ruling 2026-06-20). apply_derived_to_manifest HONORS the declared hold_respin
+    # (its own guard), so the gate must accept the derived `respin` here rather than flag drift.
+    "hold_respin": {"hold_respin", "freespin", "respin"},
     "freespin": {"freespin", "hold_respin"},
     "settlement": {"settlement", "wheel", "minigame", "selector"},
     "player_choice": {"selector"},
@@ -37,21 +43,28 @@ ROLE_TO_MECH: dict[str, set[str]] = {
 # Confidence floor: below this the deriver is guessing -> require explicit sign-off.
 MIN_CONFIDENCE = 0.7
 
-# ── Migration delta (2026-06-18, deriver v3, MODEL DECIDED) ─────────────────────
-# MODEL DECISION (owner): hold_respin REQUIRES an accumulating held set; a constant lock is a
-# plain respin. With that rule the deriver is FULLY confident fleet-wide (no sign-off pending).
-# These are the (machine, ST) where the hand-declared role differs from the data-derived
-# mechanism -- the refactor (mechanism = derived) corrects each by construction; the manifest
-# `role` is being REPLACED, so there is no manual edit. Validated against raw rawdata:
+# ── Migration delta (2026-06-18, deriver v3; AMENDED 2026-06-20) ────────────────
+# MODEL DECISION (owner 2026-06-18): hold_respin REQUIRES an accumulating held set; a constant
+# lock is, BY DEFAULT, a plain respin (derive_mechanism rule 8). AMENDMENT (owner 2026-06-20):
+# that lock-GROWTH heuristic is too coarse for a GRANTED constant-lock respin chain triggered by
+# a pity/grant mechanic (M277 LockReSpin: random + collect-peak pity). Such a chain is a
+# hold_respin BONUS SESSION (freespin-family: trigger-path / grant analysis) even with a constant
+# locked LINE set — a DOMAIN call the user confirms at gate-8 that the deriver cannot reliably
+# derive (M277 vs M149's plain in-line respin look identical to the lock-growth signal). So a
+# DECLARED hold_respin is now HONORED over a derived `respin`: apply_derived_to_manifest keeps the
+# declared role (its guard) and ROLE_TO_MECH[hold_respin] accepts `respin` (above). The constant-
+# lock LockReSpin family (M227/M228/M231/M246/M247/M277 ST13) therefore STAYS hold_respin — they
+# are NO LONGER in this fix list. (derive_mechanism still RETURNS respin for a constant lock —
+# that default + test_deriver_constant_lock_is_respin_per_model_decision are unchanged; only the
+# apply/gate layer honors the manifest's gate-8-confirmed family refinement.)
+#
+# These remain genuine data-derived role corrections (derived role OVERRIDES the manifest; NOT a
+# hold_respin↔respin family question):
 PENDING_ROLE_FIXES: dict[tuple[str, str], str] = {
     ("M257", "13"): "state",         # never-wins 'null' milestone, no held state
     ("M268", "125"): "hold_respin",   # persistent coin-position JSON -> accumulating hold
     ("M252", "125"): "hold_respin",   # LockReels ACCUMULATES 1,5 -> ... -> 1,2,4,5,6,7,8
     ("M274", "139"): "minigame",      # win-bearing minigame settlement
-    # constant-lock LockReSpin ST13 -> respin per the model (these locks do NOT accumulate;
-    # the accumulating ST13 machines M201/M233/M241 correctly stay hold_respin):
-    ("M227", "13"): "respin", ("M228", "13"): "respin", ("M231", "13"): "respin",
-    ("M246", "13"): "respin", ("M247", "13"): "respin", ("M277", "13"): "respin",
 }
 # Empty: the model decision removed the last ambiguity -- nothing awaits sign-off.
 PENDING_SIGNOFF: set[tuple[str, str]] = set()

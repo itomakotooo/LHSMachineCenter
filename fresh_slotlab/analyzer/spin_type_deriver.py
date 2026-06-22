@@ -260,6 +260,20 @@ def apply_derived_to_manifest(manifest: dict, derived_mechanisms: dict[str, str]
         # wallet-delta test is precision-fragile). The hand label knows better there, so keep it.
         if role == "paid_spin" and blk.get("role") not in (None, "", "paid_spin"):
             continue
+        # GUARD: never DOWNGRADE a declared hold_respin to a plain respin. The
+        # hold_respin-vs-respin distinction (does the held set ACCUMULATE?) is a DOMAIN
+        # call the user confirms at gate-8 -- a GRANTED respin chain triggered by a
+        # pity/grant mechanic (M277 LockReSpin: random + collect-peak pity) is a
+        # hold_respin BONUS SESSION even when its locked LINES stay constant across the
+        # burst. derive_mechanism rule 8 reads "constant/no lock GROWTH" as respin, which
+        # is too coarse for the granted-respin-with-pity archetype (user ruling 2026-06-20,
+        # M277 + the M227/M228/M231/M246/M247 LockReSpin family). The hand label -- a
+        # gate-8-confirmed family refinement, NOT drift -- knows better; keep it so the
+        # freespin-family trigger-path / grant analysis is preserved. (respin is the only
+        # mechanism honored here; any OTHER derived role on a hold_respin ST -- e.g.
+        # state/minigame -- still overrides, surfacing genuine drift.)
+        if role == "respin" and blk.get("role") == "hold_respin":
+            continue
         blk["role"] = role
         if str(mech) in MECHANISM_TO_PLAY:
             blk["play"] = MECHANISM_TO_PLAY[str(mech)]
