@@ -2420,6 +2420,35 @@ function normalizeBackendEvent(ev) {
 const OP_LABEL = { sample: "采样", generate: "生成", md5: "md5", delete: "删除", autotune: "调参", ui: "ui", "": "" };
 function logOpLabel(op) { return OP_LABEL[op] != null ? OP_LABEL[op] : String(op || ""); }
 
+// Normalize ANY stored event (client-canonical with source:"ui", or a raw
+// backend /api/events row) to the canonical log schema. The row renderer and
+// the filter both go through this so they always agree on the fields.
+function toCanonicalLogEntry(ev) {
+  return (ev && ev.source === "ui") ? ev : normalizeBackendEvent(ev);
+}
+
+// Filter canonical log entries for the unified panel. ``filter`` =
+// {errorsOnly?, op?, query?}:
+//   errorsOnly — keep only level error|warn (the "仅错误/警告" toggle).
+//   op         — keep only that lane (sample|generate|md5|…); falsy = all lanes.
+//   query      — case-insensitive substring over machine + op-label + op + text
+//                (so "M84", "采样", "sample", or any message word all match).
+function filterLogEntries(entries, filter) {
+  filter = filter || {};
+  const q = String(filter.query || "").trim().toLowerCase();
+  const wantOp = filter.op || "";
+  return (entries || []).filter((raw) => {
+    const c = toCanonicalLogEntry(raw);
+    if (filter.errorsOnly && c.level !== "error" && c.level !== "warn") return false;
+    if (wantOp && c.op !== wantOp) return false;
+    if (q) {
+      const hay = `${c.machine || ""} ${logOpLabel(c.op)} ${c.op || ""} ${c.text || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
 /**
  * Format a chunk-level event (from analyzer progress.jsonl) as a
  * one-line timeline row text. Keeps rendering logic off the impure
@@ -2865,6 +2894,8 @@ const PURE = {
   buildClientEvent,
   normalizeBackendEvent,
   logOpLabel,
+  toCanonicalLogEntry,
+  filterLogEntries,
   formatChunkEventText,
   computeElapsedSeconds,
   computeInflightChunks,

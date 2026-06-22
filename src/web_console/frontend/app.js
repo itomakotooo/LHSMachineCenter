@@ -10,6 +10,9 @@ const state = {
   lang: localStorage.getItem("slot_console_lang") || "zh",
   currentRunId: "",
   currentRunStatus: "",
+  // Unified-log filter (log redesign P2): {errorsOnly, op, query}. Applied to the
+  // 活动日志流 buffer by PURE.filterLogEntries before render.
+  logFilter: { errorsOnly: false, op: "", query: "" },
   machines: [],
   runs: [],
   modelMeta: {},
@@ -9378,6 +9381,23 @@ function renderHallsRefreshBar() {
 }
 
 function bindEvents() {
+  // Unified-log filters (log redesign P2): re-render the strip on change. Guarded
+  // (byId may be null if the markup is absent) so binding never throws.
+  const _lfQuery = byId("logFilterQuery");
+  if (_lfQuery) _lfQuery.addEventListener("input", () => {
+    state.logFilter.query = _lfQuery.value;
+    _renderActivityStrip();
+  });
+  const _lfOp = byId("logFilterOp");
+  if (_lfOp) _lfOp.addEventListener("change", () => {
+    state.logFilter.op = _lfOp.value;
+    _renderActivityStrip();
+  });
+  const _lfErr = byId("logFilterErrors");
+  if (_lfErr) _lfErr.addEventListener("change", () => {
+    state.logFilter.errorsOnly = _lfErr.checked;
+    _renderActivityStrip();
+  });
   byId("langSelect").addEventListener("change", async (e) => {
     state.lang = e.target.value;
     applyI18n();
@@ -9814,13 +9834,18 @@ function _renderActivityStrip() {
     panel.classList.remove("activity-strip-live");
     if (statusEl) statusEl.textContent = "idle";
   }
-  // Last 12, sorted chronologically then reversed so newest tops.
+  // Apply the active filter (level/op/machine/search), then show the latest 50
+  // (the body scrolls), newest on top. The buffer holds up to 200 (ring above);
+  // the panel is the one place all log lines land, so 50 visible >> the old 12.
   const all = state.activityEvents || [];
-  const sorted = [...all].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
-  const recent = sorted.slice(-12).reverse();
+  const filtered = PURE.filterLogEntries(all, state.logFilter || {});
+  const sorted = [...filtered].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
+  const recent = sorted.slice(-50).reverse();
+  const f = state.logFilter || {};
+  const filterActive = !!(f.query || f.op || f.errorsOnly);
   body.innerHTML = recent.length
     ? recent.map((ev) => _formatActivityRow(ev)).join("")
-    : `<div class="muted" style="padding:8px 4px;font-size:12px">无近期事件</div>`;
+    : `<div class="muted" style="padding:8px 4px;font-size:12px">${filterActive ? "无匹配事件" : "无近期事件"}</div>`;
 }
 
 // Render ONE canonical log row for every entry — client OR backend. Client
@@ -9829,7 +9854,7 @@ function _renderActivityStrip() {
 // {ts, level, op, machine, mode, text, detail}, rendered as: time · op-lane ·
 // machine · message, coloured by level. (Replaces the old ui-vs-backend split.)
 function _formatActivityRow(ev) {
-  const c = (ev && ev.source === "ui") ? ev : PURE.normalizeBackendEvent(ev);
+  const c = PURE.toCanonicalLogEntry(ev);
   const tsShort = (c.ts || "").substring(11, 19);
   const level = c.level || "info";
   const cls = level === "warn" ? "ev-warn"
@@ -9840,11 +9865,15 @@ function _formatActivityRow(ev) {
   const mach = c.machine
     ? (c.mode != null ? `${c.machine}·m${c.mode}` : String(c.machine))
     : "";
+  // detail (long error / raw payload) surfaces on hover via title=, so the row
+  // stays one line but the full text is reachable without a separate window.
+  const tailAttr = c.detail ? ` title="${_escHtml(c.detail)}"` : "";
+  const tailMark = c.detail ? " ⊕" : "";
   return `<div class="activity-line ${cls}">`
     + `<span class="activity-ts">${_escHtml(tsShort)}</span>`
     + `<span class="activity-op">${_escHtml(opLabel)}</span>`
     + `<span class="activity-mach">${_escHtml(mach)}</span>`
-    + `<span class="activity-tail">${_escHtml(c.text || "")}</span>`
+    + `<span class="activity-tail"${tailAttr}>${_escHtml(c.text || "")}${tailMark}</span>`
     + `</div>`;
 }
 

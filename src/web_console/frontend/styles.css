@@ -2872,10 +2872,39 @@ button.small-btn.active, .small-btn.active {
 .activity-strip .activity-strip-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 4px;
 }
+/* Unified-log filter bar (log redesign P2): pushed to the right of the header. */
+.log-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.log-filter-search {
+  width: 150px;
+  height: 26px;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.log-filter-op {
+  height: 26px;
+  font-size: 11px;
+  padding: 1px 4px;
+}
+.log-filter-errors {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.log-filter-errors input { margin: 0; }
 .activity-strip h2 {
   font-size: 13px;
   margin: 0;

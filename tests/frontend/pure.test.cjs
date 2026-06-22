@@ -1422,6 +1422,35 @@ test("logOpLabel: maps lanes to stable chips", () => {
   assert.equal(PURE.logOpLabel("zzz"), "zzz");  // unknown lane passes through
 });
 
+test("filterLogEntries: errorsOnly keeps only error+warn (client + backend mix)", () => {
+  const entries = [
+    PURE.buildClientEvent("generate_report_done", { machine: "M1", mode: 1, rtp_pct: 90 }, "t"),  // ok
+    PURE.buildClientEvent("generate_report_failed", { machine: "M2", mode: 1, error: "boom" }, "t"), // error
+    { ts: "t", model_id: "analyzer", machine: "M3", mode: 1, event: "chunk_progress", chunks_completed: 5 }, // backend info
+    { ts: "t", model_id: "analyzer", machine: "M4", mode: 1, run_status: "failed", error_message: "x" }, // backend error
+  ];
+  const out = PURE.filterLogEntries(entries, { errorsOnly: true });
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map((e) => PURE.toCanonicalLogEntry(e).machine).sort(), ["M2", "M4"]);
+});
+
+test("filterLogEntries: op lane filter + query substring (case-insensitive)", () => {
+  const entries = [
+    PURE.buildClientEvent("md5_refresh_done", { fetched: 258, updated: 0 }, "t"),        // op md5
+    PURE.buildClientEvent("generate_report_start", { machine: "M278", mode: 1 }, "t"),   // op generate
+    { ts: "t", model_id: "analyzer", machine: "M84", mode: 1, event: "chunk_progress", chunks_completed: 12 }, // op sample
+  ];
+  assert.equal(PURE.filterLogEntries(entries, { op: "generate" }).length, 1);
+  assert.equal(PURE.filterLogEntries(entries, { op: "md5" }).length, 1);
+  // query matches machine id regardless of case, across client + backend rows
+  assert.equal(PURE.filterLogEntries(entries, { query: "m278" }).length, 1);
+  assert.equal(PURE.filterLogEntries(entries, { query: "M84" }).length, 1);
+  // query matches op label too
+  assert.equal(PURE.filterLogEntries(entries, { query: "生成" }).length, 1);
+  // empty filter = passthrough
+  assert.equal(PURE.filterLogEntries(entries, {}).length, 3);
+});
+
 test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {
   // 2026-04-21 regression guard: a 165-chunk resume-from-cache replay
   // used to appear stuck (no events for ~80s). The analyzer now emits

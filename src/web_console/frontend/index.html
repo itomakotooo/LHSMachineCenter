@@ -318,6 +318,17 @@
             <div class="activity-strip-header">
               <h2 data-i18n="panelActivityStrip">活动日志流</h2>
               <span id="activityStripStatus" class="muted">idle</span>
+              <div class="log-filters">
+                <input type="text" id="logFilterQuery" class="log-filter-search" placeholder="搜索 机台/消息…" />
+                <select id="logFilterOp" class="log-filter-op" title="按来源过滤">
+                  <option value="">全部来源</option>
+                  <option value="sample">采样</option>
+                  <option value="generate">生成</option>
+                  <option value="md5">md5</option>
+                  <option value="delete">删除</option>
+                </select>
+                <label class="log-filter-errors" title="只看警告 + 失败"><input type="checkbox" id="logFilterErrors" /> 仅错误</label>
+              </div>
             </div>
             <div id="activityStripBody" class="activity-strip-body"></div>
           </section>
