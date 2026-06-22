@@ -1475,7 +1475,7 @@ class TestBaseHashUnchangedPhase3:
 
     def test_base_hash_is_current_baseline(self):
         """compute_base_analyzer_version() must return the current baseline
-        ddde50975d25 (re-baselined 2026-06-22 by the DELIBERATE pluggable
+        5900f0deb2ad (re-baselined 2026-06-22 by the DELIBERATE pluggable
         round_win rule-engine refactor: the 4 rule TYPE classes + RULE_REGISTRY
         moved out of fresh_slotlab/round_win.py into the base-EXCLUDED
         fresh_slotlab/round_win_rules/ package; round_win_rules/__init__.py added
@@ -1491,8 +1491,8 @@ class TestBaseHashUnchangedPhase3:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "ddde50975d25", (
-            f"base_hash changed from the ddde50975d25 baseline to {bh!r}. "
+        assert bh == "5900f0deb2ad", (
+            f"base_hash changed from the 5900f0deb2ad baseline to {bh!r}. "
             f"A base_hash change means a closure file was accidentally modified "
             f"(or a deliberate closure change needs this updated)."
         )

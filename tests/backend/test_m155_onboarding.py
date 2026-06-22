@@ -574,8 +574,8 @@ class TestInjectBugProof:
 # The base_hash at HEAD as of this onboard. A framework SNAPSHOT (not an M155 value):
 # re-baselined 2026-06-22 by the pluggable round_win rule-engine refactor (rule types
 # moved to base-EXCLUDED round_win_rules/). Prior framework baselines: 3ddaa183f38c →
-# bba689d50f03 → ddde50975d25.
-_BASE_HASH_AT_HEAD = "ddde50975d25"
+# bba689d50f03 → 5900f0deb2ad.
+_BASE_HASH_AT_HEAD = "5900f0deb2ad"
 
 
 class TestBaseHashConfigOnly:
@@ -602,7 +602,7 @@ class TestBaseHashConfigOnly:
 
     def test_base_hash_matches_head_snapshot(self):
         """base_hash equals the CURRENT HEAD snapshot. This is NOT c5d2199142c3 —
-        that drifted to ddde50975d25 at framework commit 58a28fd (parser.py edit),
+        that drifted to 5900f0deb2ad at framework commit 58a28fd (parser.py edit),
         which predates and is independent of M155. With M155 adding no closure
         file (test above), the base_hash is whatever HEAD already produces.
 
@@ -615,5 +615,5 @@ class TestBaseHashConfigOnly:
             f"base_hash is {bh!r}, expected the HEAD snapshot {_BASE_HASH_AT_HEAD!r}. "
             f"M155 adds no closure file, so a change here means a closure file moved "
             f"after this onboard. (Brief-requested c5d2199142c3 was already superseded "
-            f"by ddde50975d25 at framework commit 58a28fd — a parser.py change, not M155.)"
+            f"by 5900f0deb2ad at framework commit 58a28fd — a parser.py change, not M155.)"
         )

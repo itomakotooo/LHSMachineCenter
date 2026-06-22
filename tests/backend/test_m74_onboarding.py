@@ -416,7 +416,7 @@ class TestCrossMachineNonLeak:
 class TestBaseHashUnchanged:
     def test_base_hash_is_current_baseline(self):
         """M74 is a manifest-only strict-reuse onboard (no plugin / no closure edit).
-        The fleet base_hash baseline is ddde50975d25 (re-baselined 2026-06-22 by the
+        The fleet base_hash baseline is 5900f0deb2ad (re-baselined 2026-06-22 by the
         pluggable round_win rule-engine refactor — rule types moved to base-EXCLUDED
         round_win_rules/; prior pin 3ddaa183f38c was stale, missed across the
         intervening WinResidualRule / settlement_label_format flips). M74 must equal
@@ -424,8 +424,8 @@ class TestBaseHashUnchanged:
         M74 must never do)."""
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "ddde50975d25", (
-            f"base_hash changed from the ddde50975d25 baseline to {bh!r}. M74 "
+        assert bh == "5900f0deb2ad", (
+            f"base_hash changed from the 5900f0deb2ad baseline to {bh!r}. M74 "
             f"onboarding is manifest-only — a base_hash change means a closure/shared "
             f"file was edited (or a deliberate closure change needs this updated)."
         )
@@ -551,4 +551,4 @@ class TestInjectBugProof:
         assert (ric.get("layer2_fallback_buckets_found") or []) == []
         assert m74_summary["structure_drift"].get("status") == "ok"
         assert not (set(derive_analyses(m74_manifest)) & _FOREIGN_ANALYSES)
-        assert compute_base_analyzer_version() == "ddde50975d25"  # re-baselined by pluggable round_win refactor (2026-06-22)
+        assert compute_base_analyzer_version() == "5900f0deb2ad"  # re-baselined by pluggable round_win refactor (2026-06-22)

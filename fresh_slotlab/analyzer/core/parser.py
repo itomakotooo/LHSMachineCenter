@@ -642,28 +642,49 @@ def parse_chunk_response(
         }
 
     # --- Pre-scan: detect if CostCredits is unreliable for this chunk.
-    # Some machines (M10, M23, M131, M133 — LockReSpin SpinType 13) report
-    # CostCredits=0 on ALL spins even though BetAmount>0. For these, the
-    # CostCredits-based paid/bonus classification fails. Detect by sampling
-    # the first robot: if every round has CostCredits==0 but BetAmount>0,
-    # treat ALL spins as paid (the machine has no meaningful free-spin
-    # distinction).
+    # CostCredits reliably marks a paid base spin ONLY when every base spin
+    # carries its own positive cost. Two real failure modes break that — in both,
+    # the wager is real (BetAmount>0 / _bet>0) but CostCredits>0 does NOT mark the
+    # base spins, so a CostCredits-driven paid/bonus split mis-counts the paid unit:
+    #   (a) CostCredits==0 on ALL spins (server never populates it) but BetAmount>0
+    #       — legacy LockReSpin M10/M23/M131/M133.
+    #   (b) CostCredits ECHOED onto a rare feature round (M93: ST82
+    #       DiamondManiaFreespin carries cost=1000) while the paid base spin
+    #       (ST13, cost=0) carries none — so cost-bearing rounds cover only 329 of
+    #       the 40000 base spins and the M104 session count collapses to 329
+    #       (RTP denominator off by 121x; the M93 paid-unit-denominator bug).
+    # Robust detector (sample robot 0): a paid base spin == a distinct SpinTimes,
+    # so CostCredits is unreliable iff some distinct SpinTimes has NO cost-bearing
+    # round (cost-bearing SpinTimes ⊊ all SpinTimes) AND the machine wagers. When
+    # unreliable, every spin is treated as paid (is_paid=True), so the paid-unit
+    # count == distinct SpinTimes == the true base-spin count (== server Times) and
+    # the wager comes from BetAmount/_bet (bet_amt already prefers BetAmount). Normal
+    # machines have a cost-bearing round on EVERY base spin → cost-bearing SpinTimes
+    # == all SpinTimes → reliable (unchanged; byte-identical). Fleet sweep confirms
+    # exactly 5 machines diverge (M93 + the 4 all-zero) and zero have MORE distinct
+    # SpinTimes than base spins (no over-count risk).
     cost_credits_unreliable = False
     _sample_robot = next((r for r in resp if isinstance(r, dict)), None)
     if _sample_robot is not None:
         _sample_rounds = parse_rounds(_sample_robot)
         if _sample_rounds:
-            _all_zero_cost = all(
-                to_float(rd.get("CostCredits"), default=-1.0) == 0.0
-                for rd in _sample_rounds[:200]
-                if isinstance(rd, dict)
+            _all_spin_times: set = set()
+            _cost_spin_times: set = set()
+            _any_positive_bet = False
+            for rd in _sample_rounds:
+                if not isinstance(rd, dict):
+                    continue
+                _sp = rd.get("SpinTimes")
+                if _sp is not None:
+                    _all_spin_times.add(_sp)
+                    if to_float(rd.get("CostCredits"), default=0.0) > 0.0:
+                        _cost_spin_times.add(_sp)
+                if to_float(rd.get("BetAmount"), default=0.0) > 0.0:
+                    _any_positive_bet = True
+            cost_credits_unreliable = (
+                _any_positive_bet
+                and len(_cost_spin_times) < len(_all_spin_times)
             )
-            _any_positive_bet = any(
-                to_float(rd.get("BetAmount"), default=0.0) > 0.0
-                for rd in _sample_rounds[:200]
-                if isinstance(rd, dict)
-            )
-            cost_credits_unreliable = _all_zero_cost and _any_positive_bet
 
     # --- Extra-field discovery: track fields beyond _BASELINE_ROUND_FIELDS.
     extra_fields_seen: dict[str, int] = defaultdict(int)
