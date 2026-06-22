@@ -1303,6 +1303,19 @@
       "applies_to": [
         "M266"
       ]
+    },
+    "m93_st83_freespinwheel_settlement": {
+      "_doc": "M93 ST83 DiamondManiaFreespinWheel: bare WinCredits, no per-round pid -> synth st83.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          83
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M93"
+      ]
     }
   },
   "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)",

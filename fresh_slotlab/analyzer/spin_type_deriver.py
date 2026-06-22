@@ -137,17 +137,26 @@ def _remarks_re(sig: dict, rx: re.Pattern) -> bool:
     return any(rx.search(k) for k in sig["remarks"])
 
 
-def derive_mechanism(sig: dict) -> tuple[str, float, str]:
+def derive_mechanism(sig: dict, cost_unreliable: bool = False) -> tuple[str, float, str]:
     """Return (mechanism, confidence, evidence). Ordered, first-match; precise signals
     validated against the fleet 2026-06-18. A confidence < MIN_CONFIDENCE means the data
-    is genuinely ambiguous -> the gate routes it to domain sign-off, never a silent guess."""
+    is genuinely ambiguous -> the gate routes it to domain sign-off, never a silent guess.
+
+    ``cost_unreliable``: the machine echoes the spin cost onto a feature round (M93:
+    ST82 DiamondManiaFreespin carries CostCredits=1000 while the paid base ST13 carries
+    0) OR never populates CostCredits (legacy LockReSpin M10/M23/M131/M133). When set,
+    CostCredits>0 is NOT a reliable "this is a paid base spin" signal, so the cost0-gated
+    rules (freespin / hold_respin / settlement / minigame) treat the round as free —
+    otherwise an echoed cost makes a freespin feature derive as a paid 'normal' base
+    (the bug that blocked M93's re-onboard). Detected per-machine by
+    derive_cost_credits_unreliable (mirrors core/parser.py)."""
     f = sig["fields"]
     n = max(sig["n"], 1)
-    # free = the ST is never cost-bearing. (A per-record CostCredits ECHO on a truly-free spin
-    # -- the M104/M96 class -- is NOT detectable here via the wallet delta: large LastCredits
-    # values lose the cost in float precision. That economy call is left to the parser's is_paid
-    # / cost_credits_unreliable logic; the deriver does not reimplement it.)
-    cost0 = sig["cost_pos"] == 0
+    # free = the ST is never cost-bearing. When cost_unreliable, the per-record CostCredits
+    # is an echo / absent (the M93 / M104 / M96 class) so treat the round as free for the
+    # cost0-gated rules — the machine-level cost_credits_unreliable signal is the cross-ST
+    # context the per-ST wallet-delta test cannot recover (float precision).
+    cost0 = (sig["cost_pos"] == 0) or cost_unreliable
     win = sig["win_wc"] + sig["win_wa"]
     reel = sig["new_reel"] / n
     coin = sig["coin_json"] / n
@@ -207,7 +216,23 @@ def derive_mechanism(sig: dict) -> tuple[str, float, str]:
     return "normal", 0.7 if sig["cost_pos"] > 0 else 0.5, "default base reel"
 
 
-def derive_economy(sig: dict, machine_has_paid_base: bool) -> str:
+# Feature-type mechanisms (triggered sub-events) vs the main paid loop. Used to derive
+# economy/position from the mechanism when cost_credits_unreliable (the CostCredits-based
+# signals are echoed/absent — M93 class — so they can't drive paid/base).
+_FEATURE_MECHS = frozenset({"freespin", "wheel", "minigame", "settlement", "hold_respin", "selector"})
+
+
+def derive_economy(
+    sig: dict,
+    machine_has_paid_base: bool,
+    *,
+    cost_unreliable: bool = False,
+    mechanism: str | None = None,
+) -> str:
+    if cost_unreliable:
+        # CostCredits is echoed/absent — derive from the mechanism: a triggered feature
+        # (freespin/wheel/...) is free; the main paid loop (normal/respin base) is paid.
+        return "free" if mechanism in _FEATURE_MECHS else "paid"
     if sig["cost_pos"] > 0:
         return "paid"
     # legacy lock-respin: cost echo unreliable -> bet>0 on the sole/main loop = paid
@@ -216,7 +241,19 @@ def derive_economy(sig: dict, machine_has_paid_base: bool) -> str:
     return "free"
 
 
-def derive_position(sig: dict, st: str, prev_st_counts: Counter, machine_has_paid_base: bool) -> str:
+def derive_position(
+    sig: dict,
+    st: str,
+    prev_st_counts: Counter,
+    machine_has_paid_base: bool,
+    *,
+    cost_unreliable: bool = False,
+    mechanism: str | None = None,
+) -> str:
+    if cost_unreliable:
+        # CostCredits is echoed/absent — a feature mechanism is triggered (feature
+        # position); the main paid loop (normal/respin) is the base.
+        return "feature" if mechanism in _FEATURE_MECHS else "base"
     if sig["cost_pos"] > 0:
         return "base"
     nonself = sum(c for p, c in (prev_st_counts or Counter()).items() if str(p) != str(st))
@@ -280,16 +317,46 @@ def apply_derived_to_manifest(manifest: dict, derived_mechanisms: dict[str, str]
     return eff
 
 
+def derive_cost_credits_unreliable(rounds_by_st: dict[str, list[dict]]) -> bool:
+    """Return True iff CostCredits does NOT reliably mark this machine's paid base spins.
+
+    Mirrors core/parser.py's cost_credits_unreliable detection EXACTLY (so the deriver's
+    economy/position classification agrees with the parser's paid-unit counting). A paid
+    base spin == a distinct SpinTimes; CostCredits is unreliable iff some distinct
+    SpinTimes has NO cost-bearing round (cost-bearing SpinTimes ⊊ all SpinTimes) AND the
+    machine wagers (BetAmount>0 somewhere). Catches both the cost-echoed-onto-a-feature
+    case (M93: ST82 carries cost, base ST13 carries none) and the never-populated case
+    (M10/M23/M131/M133, all cost=0). Computed over ALL the machine's rounds (cross-ST).
+    """
+    all_spin_times: set = set()
+    cost_spin_times: set = set()
+    any_bet = False
+    for rounds in (rounds_by_st or {}).values():
+        for r in rounds or []:
+            if not isinstance(r, dict):
+                continue
+            sp = r.get("SpinTimes")
+            if sp is not None:
+                all_spin_times.add(sp)
+                if _num(r.get("CostCredits")) > 0.0:
+                    cost_spin_times.add(sp)
+            if _num(r.get("BetAmount")) > 0.0:
+                any_bet = True
+    return any_bet and len(cost_spin_times) < len(all_spin_times)
+
+
 def derive_profile_from_signals(sig: dict, *, st: str,
                                 machine_has_paid_base: bool,
-                                prev_st_counts: Counter | None = None) -> dict:
+                                prev_st_counts: Counter | None = None,
+                                cost_unreliable: bool = False) -> dict:
     """Full 3-axis profile from a pre-accumulated signal dict (streaming path)."""
-    mech, conf, ev = derive_mechanism(sig)
+    mech, conf, ev = derive_mechanism(sig, cost_unreliable)
     return {
         "spin_type": str(st),
         "mechanism": mech,
-        "economy": derive_economy(sig, machine_has_paid_base),
-        "position": derive_position(sig, st, prev_st_counts or Counter(), machine_has_paid_base),
+        "economy": derive_economy(sig, machine_has_paid_base, cost_unreliable=cost_unreliable, mechanism=mech),
+        "position": derive_position(sig, st, prev_st_counts or Counter(), machine_has_paid_base,
+                                    cost_unreliable=cost_unreliable, mechanism=mech),
         "confidence": conf,
         "evidence": ev,
     }
@@ -297,15 +364,22 @@ def derive_profile_from_signals(sig: dict, *, st: str,
 
 def derive_spin_type_profile(rounds: list[dict], *, st: str,
                              machine_has_paid_base: bool,
-                             prev_st_counts: Counter | None = None) -> dict:
-    """Full 3-axis profile for one (machine, ST) from its rounds."""
+                             prev_st_counts: Counter | None = None,
+                             cost_unreliable: bool = False) -> dict:
+    """Full 3-axis profile for one (machine, ST) from its rounds.
+
+    ``cost_unreliable``: pass the machine-level signal from
+    derive_cost_credits_unreliable(rounds_by_st) so economy/position are derived from the
+    mechanism rather than the echoed/absent CostCredits (M93 cost-echo class). Defaults
+    False (normal machines — byte-identical to the pre-2026-06-22 behaviour)."""
     sig = aggregate_st_signals(rounds)
-    mech, conf, ev = derive_mechanism(sig)
+    mech, conf, ev = derive_mechanism(sig, cost_unreliable)
     return {
         "spin_type": str(st),
         "mechanism": mech,
-        "economy": derive_economy(sig, machine_has_paid_base),
-        "position": derive_position(sig, st, prev_st_counts or Counter(), machine_has_paid_base),
+        "economy": derive_economy(sig, machine_has_paid_base, cost_unreliable=cost_unreliable, mechanism=mech),
+        "position": derive_position(sig, st, prev_st_counts or Counter(), machine_has_paid_base,
+                                    cost_unreliable=cost_unreliable, mechanism=mech),
         "confidence": conf,
         "evidence": ev,
     }

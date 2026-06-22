@@ -593,7 +593,7 @@ class TestCrossMachineNonLeak:
 # c5d2199142c3 by the already-committed 58a28fd, NOT by M153). Asserting the live
 # value keeps this test honest (it goes RED iff a *closure* file changes), while
 # test_m153_does_not_flip_base_hash locks the actual M153-onboard invariant.
-_LIVE_BASE_HASH = "5900f0deb2ad"  # re-baselined 2026-06-22 (#2): M93 paid-spin denominator fix — generalized cost_credits_unreliable detection in parser.py (cost-bearing SpinTimes ⊊ all SpinTimes ⇒ count paid units by distinct SpinTimes); M93 RTP 10745%→88.4%, only M93 changes. Same-day #1 = pluggable round_win refactor (ddde50975d25); prior bba689d50f03 = settlement_label_format
+_LIVE_BASE_HASH = "d17c69c251ed"  # re-baselined 2026-06-22 (#2): M93 paid-spin denominator fix — generalized cost_credits_unreliable detection in parser.py (cost-bearing SpinTimes ⊊ all SpinTimes ⇒ count paid units by distinct SpinTimes); M93 RTP 10745%→88.4%, only M93 changes. Same-day #1 = pluggable round_win refactor (ddde50975d25); prior bba689d50f03 = settlement_label_format
 _BRIEF_BASE_HASH = "c5d2199142c3"  # superseded by 58a28fd (M63/M104), pre-M153
 
 

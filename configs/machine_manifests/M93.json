@@ -1,0 +1,217 @@
+{
+ "machine_id": "M93",
+ "schema": "spintype-native/1",
+ "modes": [
+  1
+ ],
+ "inherits_from": null,
+ "spin_types": {
+  "13": {
+   "role": "paid_spin",
+   "play": "LockReSpin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "ReelSkin",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "LockLines",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "RewardLastNode": 0.1832,
+    "PayoutByPayline": 0.1832,
+    "PayoutIdToWinAmount": 0.1832,
+    "LockLines": 0.0457,
+    "ReMarks": 0.0309
+   },
+   "observed_fields_source": "M93 re-onboard 2026-06-22 (cost-echo: cost_unreliable=True; 40935 ST13; mech=respin conf=0.82)"
+  },
+  "2": {
+   "role": "settlement",
+   "play": "Wheel",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "RTPId",
+    "ReMarks",
+    "SpinTimes",
+    "SpinType",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LastCredits": 1.0,
+    "WinCredits": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "ReMarks": 0.5
+   },
+   "observed_fields_source": "M93 re-onboard 2026-06-22 (cost-echo: cost_unreliable=True; 658 ST2; mech=wheel conf=0.9)"
+  },
+  "82": {
+   "role": "freespin",
+   "play": "DiamondManiaFreespin",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "BetAmount",
+    "CostCredits",
+    "ReelSkin",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "BetAmount",
+    "CostCredits",
+    "CurJackpotStoreWin",
+    "GameplayTriggerType",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "PayLineGroupId",
+    "PayoutByPayline",
+    "PayoutGroupId",
+    "PayoutIdToWinAmount",
+    "RTPId",
+    "ReMarks",
+    "ReelSkin",
+    "RewardLastNode",
+    "SpinTimes",
+    "SpinType",
+    "StopSymbolsByCol",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "LastCredits": 1.0,
+    "CostCredits": 1.0,
+    "WinCredits": 1.0,
+    "BetAmount": 1.0,
+    "ReelSkin": 1.0,
+    "StopSymbolsByCol": 1.0,
+    "PayoutGroupId": 1.0,
+    "PayLineGroupId": 1.0,
+    "CurJackpotStoreWin": 1.0,
+    "GameplayTriggerType": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0,
+    "RewardLastNode": 0.4202,
+    "PayoutByPayline": 0.4202,
+    "PayoutIdToWinAmount": 0.4202,
+    "ReMarks": 0.3073
+   },
+   "observed_fields_source": "M93 re-onboard 2026-06-22 (cost-echo: cost_unreliable=True; 11363 ST82; mech=freespin conf=0.9)"
+  },
+  "83": {
+   "role": "freespin",
+   "play": "DiamondManiaFreespinWheel",
+   "economy": {
+    "win_field": "WinCredits",
+    "kind": "real"
+   },
+   "signature": [
+    "AddFreeSpins",
+    "AddReelGames",
+    "WinCredits"
+   ],
+   "observed_fields": [
+    "AddFreeSpins",
+    "AddReelGames",
+    "IsLackCreditsSpin",
+    "LastCredits",
+    "RTPId",
+    "ReMarks",
+    "SpinTimes",
+    "SpinType",
+    "WinCredits"
+   ],
+   "observed_field_presence": {
+    "AddFreeSpins": 1.0,
+    "AddReelGames": 1.0,
+    "ReMarks": 1.0,
+    "LastCredits": 1.0,
+    "WinCredits": 1.0,
+    "SpinType": 1.0,
+    "SpinTimes": 1.0,
+    "RTPId": 1.0,
+    "IsLackCreditsSpin": 1.0
+   },
+   "observed_fields_source": "M93 re-onboard 2026-06-22 (cost-echo: cost_unreliable=True; 357 ST83; mech=freespin conf=0.9)"
+  }
+ },
+ "trigger": {
+  "payout_id": null,
+  "remarks": "DiamondMania freespin triggered from the LockReSpin base; cost echoed on ST82 (cost_credits_unreliable) — paid unit counted by distinct SpinTimes.",
+  "note": "M93 re-onboard"
+ },
+ "validation": {
+  "status": "auto",
+  "user_signed_off": false,
+  "confirmed_against": {
+   "mode": 1,
+   "rawdata": "M93/mode_1",
+   "cross_mode": [
+    1
+   ]
+  },
+  "evidence": "Re-onboard after the paid-spin denominator fix (cost echoed on ST82). RTP 88.4% (server Times=40000). Roles/plays family-aware (LockReSpin base + DiamondMania freespin, sibling M10).",
+  "date": "2026-06-22"
+ },
+ "out_of_engine_mechanics": [],
+ "round_win_rule": null,
+ "rtp_integrity": {
+  "paid_st": [
+   13
+  ],
+  "fallback_warn": 0.5,
+  "fallback_fail": 5.0
+ }
+}

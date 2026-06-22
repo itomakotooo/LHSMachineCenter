@@ -17,7 +17,10 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from fresh_slotlab.analyzer.spin_type_deriver import derive_spin_type_profile
+from fresh_slotlab.analyzer.spin_type_deriver import (
+    derive_cost_credits_unreliable,
+    derive_spin_type_profile,
+)
 
 # A declared role is consistent if the data-derived mechanism falls in its allowed set.
 # paid_spin is economy-conflated (it asserts "paid base"), so its mechanism may be a
@@ -87,6 +90,12 @@ def check_machine(
     machine_id = str(manifest.get("machine_id"))
     prev_st_counts = prev_st_counts or {}
     needs_signoff = needs_signoff or set()
+    # Machine-level cost-echo signal (mirrors core/parser.py). When CostCredits is
+    # echoed onto a feature (M93 ST82) or never populated (M10/M23/M131/M133), the
+    # per-ST economy/position + the cost0-gated mechanism rules must NOT trust
+    # CostCredits — otherwise a freespin feature derives as a paid 'normal' base and
+    # the role↔mechanism gate wrongly fails. Computed once over all rounds.
+    cost_unreliable = derive_cost_credits_unreliable(rounds_by_st)
     violations: list[dict] = []
     for st, blk in (manifest.get("spin_types") or {}).items():
         if not isinstance(blk, dict):
@@ -97,6 +106,7 @@ def check_machine(
         prof = derive_spin_type_profile(
             rounds, st=str(st), machine_has_paid_base=machine_has_paid_base,
             prev_st_counts=prev_st_counts.get(str(st), Counter()),
+            cost_unreliable=cost_unreliable,
         )
         role = blk.get("role")
         allowed = ROLE_TO_MECH.get(role, set())

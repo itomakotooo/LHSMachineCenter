@@ -497,6 +497,7 @@ def generate_report_from_chunks(
             fold_round as _fold,
             derive_profile_from_signals as _derive_prof,
             apply_derived_to_manifest as _apply_derived,
+            derive_cost_credits_unreliable as _derive_cost_unreliable,
         )
         from collections import Counter as _Ctr, defaultdict as _dd
 
@@ -509,6 +510,7 @@ def generate_report_from_chunks(
             _raw = json.loads(_cf[0].read_text(encoding="utf-8"))
             _sigs: dict = _dd(_new_sig)
             _prevby: dict = _dd(_Ctr)
+            _rounds_by_st: dict = _dd(list)
             _hasbase = False
             for _robot in (_raw.get("response") or []):
                 _prev = None
@@ -516,6 +518,7 @@ def generate_report_from_chunks(
                 for _r in _parse_rounds(_robot):
                     _st = str(_r.get("SpinType"))
                     _fold(_sigs[_st], _r, prev_last_credits=_plc)
+                    _rounds_by_st[_st].append(_r)
                     try:
                         _plc = float(_r.get("LastCredits") or 0)
                     except (TypeError, ValueError):
@@ -528,9 +531,15 @@ def generate_report_from_chunks(
                     if _prev is not None:
                         _prevby[_st][_prev] += 1
                     _prev = _st
+            # Cost-echo machines (M93: cost on feature ST82, base ST13 cost=0) need the
+            # economy/position + cost0-gated mechanism rules to ignore the unreliable
+            # CostCredits — else a freespin feature derives as a paid 'normal' base and
+            # routes wrong. cost_unreliable=False for normal machines → byte-identical.
+            _cost_unreliable = _derive_cost_unreliable(_rounds_by_st)
             _derived = {
                 _st: _derive_prof(_sig, st=_st, machine_has_paid_base=_hasbase,
-                                  prev_st_counts=_prevby[_st])["mechanism"]
+                                  prev_st_counts=_prevby[_st],
+                                  cost_unreliable=_cost_unreliable)["mechanism"]
                 for _st, _sig in _sigs.items()
             }
             if _derived:
