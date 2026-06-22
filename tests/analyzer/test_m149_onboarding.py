@@ -471,30 +471,39 @@ class _ManifestPatch:
 
 
 class TestInjectBugProof:
-    def test_inject_respin_role_flip_kills_respin_dynamics(self):
-        """INJECT A: flip ST36 role respin -> paid_spin in M149's OWN manifest. The
-        `respin` role disappears, so derive_analyses no longer attaches respin_dynamics
-        and it does NOT fire — TestRespinDynamicsDelivered would go RED. Proves the
-        delivered-metric / wiring guard actually catches a regression. VALUE-AGNOSTIC."""
+    def test_inject_unwire_respin_role_darkens_respin_dynamics(self, monkeypatch):
+        """INJECT A (wiring): respin_dynamics fires for M149 because the `respin` role
+        is WIRED to it in machine_spec.ROLE_ANALYSES. Remove that wiring → derive_analyses
+        no longer attaches respin_dynamics → it does NOT fire — TestRespinDynamicsDelivered
+        would go RED. Proves the delivered-metric guard catches a wiring regression.
+        VALUE-AGNOSTIC.
+
+        NOTE (2026-06-20): this replaces an older inject that flipped ST36's MANIFEST role
+        respin->paid_spin. Under the derive-from-data routing (report_engine derives each
+        ST's mechanism from the rawdata via spin_type_deriver and OVERRIDES the hand-declared
+        role), a manifest role flip is a no-op for M149 — the deriver re-classifies ST36 as
+        `respin` from the cost=0 reel-respin signal and restores it, so respin_dynamics keeps
+        firing. The load-bearing wiring that survives the deriver is ROLE_ANALYSES['respin']
+        -> respin_dynamics; unwire THAT to prove the guard is real."""
         if not _has_chunks(_M149_CHUNK_DIR):
             pytest.skip("M149 cached chunks not present")
+        import fresh_slotlab.analyzer.machine_spec as ms
+        assert "respin" in ms.ROLE_ANALYSES, "precondition: respin role is wired"
 
-        def _flip_role(d):
-            d["spin_types"]["36"]["role"] = "paid_spin"
+        # Unwire the respin role (monkeypatch auto-reverts on teardown).
+        monkeypatch.delitem(ms.ROLE_ANALYSES, "respin")
 
-        with _ManifestPatch(_flip_role):
-            summary = _generate("M149", _M149_CHUNK_DIR)
-            pi = summary["player_impact"]
-            rd = pi.get("respin_dynamics")
-            # RED: respin_dynamics is no longer derived (no `respin` role) — either
-            # absent entirely, or present-but-not-applicable. Both are the failure
-            # mode the GREEN guard (applicable is True) catches.
-            applicable = isinstance(rd, dict) and rd.get("applicable") is True
-            assert not applicable, (
-                "inject-bug: with ST36 role flipped to paid_spin, respin_dynamics must "
-                f"NOT be applicable; got respin_dynamics={rd}"
-            )
-        # bytes restored on __exit__ — module GREEN fixture unaffected.
+        summary = _generate("M149", _M149_CHUNK_DIR)
+        rd = summary["player_impact"].get("respin_dynamics")
+        # RED: respin_dynamics no longer attached (no ROLE_ANALYSES['respin']) — either
+        # absent entirely, or present-but-not-applicable. Both are the failure mode the
+        # GREEN guard (applicable is True) catches.
+        applicable = isinstance(rd, dict) and rd.get("applicable") is True
+        assert not applicable, (
+            "inject-bug: with ROLE_ANALYSES['respin'] unwired, respin_dynamics must NOT "
+            f"be applicable (derive_analyses won't attach it); got respin_dynamics={rd}"
+        )
+        # ROLE_ANALYSES restored on monkeypatch teardown — module GREEN fixture unaffected.
 
     def test_inject_play_change_leaks_minigame_dynamics(self):
         """INJECT B: change ST35 play Normal -> WinMiniGame in M149's OWN manifest. The

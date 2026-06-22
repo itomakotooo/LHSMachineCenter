@@ -191,62 +191,67 @@ class TestM15NewPath:
 
 # ── (b) M14 — no manifest at all (5B: flat dir deleted) ─────────────────────
 
-class TestM14NoManifest:
-    """M14 has no configs/machine_manifests/M14.json (new) and no flat manifest
-    (deleted in 5B).  compute_effective_version_for_machine must NOT crash and
-    must return a valid 12-hex string (base_hash with empty machine_features).
+# NOTE (2026-06-20): this class previously used M14 as the canonical "unregistered
+# machine" example. M14 was later legitimately onboarded (configs/machine_manifests/
+# M14.json, confirmed, in the fleet T1/T2 batch commit bcd6752), so it is no longer a
+# valid no-manifest baseline. Switched to a guaranteed-unregistered SENTINEL id
+# (M99999 — never a real machine, the same convention the backend
+# test_phase2b_generate_report uses), which is immune to any future onboarding. The
+# tested invariant (the graceful unregistered-machine path: 12-hex, derive_analyses
+# NOT called, differs from a registered machine) is unchanged.
+_UNREG = "M99999"
+
+
+class TestUnregisteredMachineNoManifest:
+    """An UNREGISTERED machine (no configs/machine_manifests/<M>.json, no flat
+    manifest — deleted in 5B). compute_effective_version_for_machine must NOT crash
+    and must return a valid 12-hex string (base_hash with empty machine_features).
     """
 
-    def test_m14_has_no_new_manifest(self):
-        """Precondition: configs/machine_manifests/M14.json must NOT exist."""
-        assert not (_NEW_MANIFESTS_ROOT / "M14.json").exists(), (
-            "M14.json was found in configs/machine_manifests/. "
-            "This test requires M14 to be unregistered (no new-schema manifest). "
-            "If M14 has been onboarded to the new schema, update this test."
+    def test_unregistered_has_no_new_manifest(self):
+        """Precondition: the sentinel machine has no new-schema manifest."""
+        assert not (_NEW_MANIFESTS_ROOT / f"{_UNREG}.json").exists(), (
+            f"{_UNREG}.json unexpectedly exists in configs/machine_manifests/. "
+            f"This test needs a guaranteed-unregistered machine."
         )
 
-    def test_m14_returns_12hex_gracefully(self):
-        """compute_effective_version_for_machine('M14', 1) returns 12-hex string
-        without crashing even though M14 has no manifest anywhere.
+    def test_unregistered_returns_12hex_gracefully(self):
+        """compute_effective_version_for_machine(<unreg>, 1) returns a 12-hex string
+        without crashing even though the machine has no manifest anywhere.
 
         5B: flat manifests deleted; non-registered machines resolve to base_hash
         with empty features.
         """
-        result = _call_versioning("M14", 1)
+        result = _call_versioning(_UNREG, 1)
         assert _HEX12_RE.match(result), (
             f"Expected 12-char hex, got {result!r}"
         )
 
-    def test_m14_returns_base_hash_composition(self):
-        """M14 (no manifest) returns base_hash composed with mode=1 only.
+    def test_unregistered_returns_base_hash_composition(self):
+        """Unregistered (no manifest) returns base_hash composed with mode=1 only.
 
         Since machine_features=[], compute_effective_analyzer_version(base_hash, {}, [], 1)
         should produce the same result every call.
         """
-        h1 = _call_versioning("M14", 1)
-        h2 = _call_versioning("M14", 1)
-        assert h1 == h2, "M14 version must be deterministic"
+        h1 = _call_versioning(_UNREG, 1)
+        h2 = _call_versioning(_UNREG, 1)
+        assert h1 == h2, "unregistered version must be deterministic"
 
-    def test_m14_differs_from_m15(self):
-        """M14 (no features) must differ from M15 (has features from spin_types).
-
-        M15 has a real spin_types-derived feature set; M14 has none.
-        Their hashes must differ because the mode-1 composition includes different
-        feature IDs.
-        """
-        m14_ev = _call_versioning("M14", 1)
+    def test_unregistered_differs_from_m15(self):
+        """An unregistered machine (no features) must differ from M15 (has features
+        from spin_types). Their hashes differ because the mode-1 composition includes
+        different feature IDs."""
+        unreg_ev = _call_versioning(_UNREG, 1)
         m15_ev = _call_versioning("M15", 1)
-        assert m14_ev != m15_ev, (
-            f"M14 ({m14_ev!r}) and M15 ({m15_ev!r}) should produce different "
-            f"effective_versions: M15 has spin_type-derived features, M14 has none."
+        assert unreg_ev != m15_ev, (
+            f"unregistered ({unreg_ev!r}) and M15 ({m15_ev!r}) should produce different "
+            f"effective_versions: M15 has spin_type-derived features, unregistered has none."
         )
 
-    def test_m14_derive_analyses_not_called(self, monkeypatch):
-        """derive_analyses must NOT be called for M14 (no new-schema manifest).
-
-        Verifies the else branch is taken (graceful empty features), not the new-
-        path branch.
-        """
+    def test_unregistered_derive_analyses_not_called(self, monkeypatch):
+        """derive_analyses must NOT be called for an unregistered machine (no
+        new-schema manifest). Verifies the else branch (graceful empty features) is
+        taken, not the new-path branch."""
         try:
             import fresh_slotlab.analyzer.machine_spec as ms
         except ImportError:
@@ -260,9 +265,9 @@ class TestM14NoManifest:
             return real_derive(manifest)
 
         with patch("fresh_slotlab.analyzer.machine_spec.derive_analyses", tracking_derive):
-            _call_versioning("M14", 1)
+            _call_versioning(_UNREG, 1)
 
         assert not derive_called, (
-            "derive_analyses WAS called for M14, but M14 has no new-schema manifest. "
-            "The else branch (empty machine_features) must be taken."
+            f"derive_analyses WAS called for {_UNREG}, but it has no new-schema "
+            f"manifest. The else branch (empty machine_features) must be taken."
         )
