@@ -150,8 +150,8 @@
   "note": "deriver-driven + collect-coin residual attribution"
  },
  "validation": {
-  "status": "auto",
-  "user_signed_off": false,
+  "status": "confirmed",
+  "user_signed_off": true,
   "confirmed_against": {
    "mode": 1,
    "rawdata": "M138/mode_1",
@@ -160,7 +160,9 @@
    ]
   },
   "evidence": "Collect-coin residual onboard: roles/plays from data-derived mechanism; WinResidualRule attributes the per-spin collect win (WinCredits - sum(payline pids)) without destroying the payline breakdown.",
-  "date": "2026-06-19"
+  "date": "2026-06-19",
+  "signed_off_date": "2026-06-20",
+  "gate8_note": "User gate-8 sign-off 2026-06-20: fully IN-ENGINE — no out-of-engine (M90-style) mechanism declared, beyond the fleet CurJackpotStoreWin test-interface-zeroing. Value-agnostic gates pass: rtp_integrity (sum(payid)==our_total, NO _unattributed_* fallback), classification gate (role==derived), byte-gate M15/M43/M279 byte-identical. Boundary mechanics (clean-synth base / ST97-ST98 dual-emit dedup / respin-triggered TopDollar / n_picks>4 re-offer) + collect-coin (per-spin realized) are all in-engine."
  },
  "out_of_engine_mechanics": [],
  "round_win_rule": null,
