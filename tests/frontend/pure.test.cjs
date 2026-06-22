@@ -1451,6 +1451,29 @@ test("filterLogEntries: op lane filter + query substring (case-insensitive)", ()
   assert.equal(PURE.filterLogEntries(entries, {}).length, 3);
 });
 
+test("formatRunMeter: chunk pct + label from an active run snapshot", () => {
+  const m = PURE.formatRunMeter({
+    model_id: "sampling", machine: "M84", mode: 1,
+    chunks_completed: 12, max_chunks: 40, total_spins: 60000, current_halfwidth_pp: 0.8,
+  });
+  assert.equal(m.op, "sample");
+  assert.equal(m.machine, "M84");
+  assert.equal(m.mode, 1);
+  assert.equal(m.pct, 30);                      // 12/40
+  assert.ok(m.label.includes("chunk 12/40"));
+  assert.ok(m.label.includes("60,000 spins"));
+  assert.ok(m.label.includes("CI±0.80pp"));
+});
+
+test("formatRunMeter: generate lane + no max_chunks → pct null, clamps", () => {
+  const g = PURE.formatRunMeter({ model_id: "generate-report", machine: "M278", mode: 1, chunks_completed: 5 });
+  assert.equal(g.op, "generate");
+  assert.equal(g.pct, null);                    // unknown total → no bar fill
+  assert.ok(g.label.includes("chunk 5"));
+  const over = PURE.formatRunMeter({ model_id: "sampling", chunks_completed: 50, max_chunks: 40 });
+  assert.equal(over.pct, 100);                  // clamped
+});
+
 test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {
   // 2026-04-21 regression guard: a 165-chunk resume-from-cache replay
   // used to appear stuck (no events for ~80s). The analyzer now emits

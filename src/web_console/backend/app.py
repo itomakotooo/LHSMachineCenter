@@ -8381,11 +8381,22 @@ def create_app(
                 completed_recent.append(r)
 
         collected: list[dict[str, Any]] = []
+        # Latest progress snapshot per run_id — drives the inline live meter the
+        # unified log renders for each active run (chunks/total/CI), so the
+        # separate 采样/批量生成 progress windows are no longer needed.
+        latest_progress: dict[str, dict[str, Any]] = {}
         for r in (active + completed_recent):
             pf_str = r.get("progress_file")
             if not pf_str:
                 continue
             events = read_progress_events(Path(pf_str))
+            for ev in events:
+                if ev.get("chunks_completed") is not None:
+                    latest_progress[str(r.get("run_id"))] = {
+                        "chunks_completed": ev.get("chunks_completed"),
+                        "total_spins": ev.get("total_spins"),
+                        "current_halfwidth_pp": ev.get("current_halfwidth_pp"),
+                    }
             for ev in events:
                 ev_ts = str(ev.get("ts") or "")
                 if cutoff_ts and ev_ts <= cutoff_ts:
@@ -8419,6 +8430,8 @@ def create_app(
                     "mode": r.get("mode"),
                     "model_id": r.get("model_id") or "sampling",
                     "started_at": r.get("started_at"),
+                    "max_chunks": r.get("max_chunks"),
+                    **(latest_progress.get(str(r.get("run_id"))) or {}),
                 }
                 for r in active
             ],

@@ -2427,6 +2427,26 @@ function toCanonicalLogEntry(ev) {
   return (ev && ev.source === "ui") ? ev : normalizeBackendEvent(ev);
 }
 
+// Build the inline live-progress meter for ONE active run (the unified log
+// renders one per /api/events active_run, refreshed each poll → the real-time
+// progress view that replaces the separate 采样/批量生成 progress windows).
+// run = {model_id, machine, mode, chunks_completed, max_chunks, total_spins,
+// current_halfwidth_pp}. Returns {op, machine, mode, pct(0-100|null), label}.
+function formatRunMeter(run) {
+  run = run || {};
+  const done = Number(run.chunks_completed || 0);
+  const max = Number(run.max_chunks || 0);
+  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((done / max) * 100))) : null;
+  const mid = String(run.model_id || "");
+  const op = MODEL_ID_OP[mid] || (mid.includes("generate") ? "generate" : "sample");
+  const bits = [];
+  if (max > 0) bits.push(`chunk ${done}/${max}`);
+  else if (done) bits.push(`chunk ${done}`);
+  if (run.total_spins != null) bits.push(`${Number(run.total_spins).toLocaleString()} spins`);
+  if (run.current_halfwidth_pp != null) bits.push(`CI±${Number(run.current_halfwidth_pp).toFixed(2)}pp`);
+  return { op, machine: run.machine || "", mode: (run.mode != null ? run.mode : null), pct, label: bits.join(" · ") };
+}
+
 // Filter canonical log entries for the unified panel. ``filter`` =
 // {errorsOnly?, op?, query?}:
 //   errorsOnly — keep only level error|warn (the "仅错误/警告" toggle).
@@ -2896,6 +2916,7 @@ const PURE = {
   logOpLabel,
   toCanonicalLogEntry,
   filterLogEntries,
+  formatRunMeter,
   formatChunkEventText,
   computeElapsedSeconds,
   computeInflightChunks,

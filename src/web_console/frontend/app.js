@@ -9770,12 +9770,12 @@ function startPolling() {
     refreshCache().catch(() => {});
     if (!state.currentRunId) updateActionStates();
   }, 4500);
-  // Activity strip (1.2s): unified log across all active + recent
-  // runs, feeds the top panel in 机台管理 tab.
+  // Activity strip (1s): the unified log + live progress meters across all
+  // active + recent runs. 1s (was 1.2s) so the in-flight meter feels real-time.
   if (state.activityTimer) clearInterval(state.activityTimer);
   state.activityTimer = setInterval(() => {
     refreshActivityStrip().catch(() => {});
-  }, 1200);
+  }, 1000);
   refreshActivityStrip().catch(() => {});
   // Fast tick (1s): only the active run's progress. Created/torn down by
   // ensureFastPolling() based on currentRunStatus.
@@ -9829,14 +9829,17 @@ function _renderActivityStrip() {
   const active = state._activeRuns || [];
   if (active.length) {
     panel.classList.add("activity-strip-live");
-    const opsLine = active
-      .map((r) => `<span class="op-chip">${_escHtml(r.model_id)} · ${_escHtml(r.machine)} mode${r.mode}</span>`)
-      .join("");
-    if (statusEl) statusEl.innerHTML = `🟡 ${active.length} 运行中 ${opsLine}`;
+    if (statusEl) statusEl.innerHTML = `🟡 ${active.length} 运行中`;
   } else {
     panel.classList.remove("activity-strip-live");
     if (statusEl) statusEl.textContent = "idle";
   }
+  // Live progress meters (sticky at the top of the log): one per active run,
+  // a real-time bar + chunk/spins/CI updated every poll (1.2s). This IS the
+  // progress view — the separate 采样/批量生成 progress windows are retired.
+  const meterHtml = active.length
+    ? `<div class="activity-meters">${active.map((r) => _formatRunMeter(r)).join("")}</div>`
+    : "";
   // Apply the active filter (level/op/machine/search), then show the latest 50
   // (the body scrolls), newest on top. The buffer holds up to 200 (ring above);
   // the panel is the one place all log lines land, so 50 visible >> the old 12.
@@ -9846,9 +9849,28 @@ function _renderActivityStrip() {
   const recent = sorted.slice(-50).reverse();
   const f = state.logFilter || {};
   const filterActive = !!(f.query || f.op || f.errorsOnly);
-  body.innerHTML = recent.length
+  const rowsHtml = recent.length
     ? recent.map((ev) => _formatActivityRow(ev)).join("")
     : `<div class="muted" style="padding:8px 4px;font-size:12px">${filterActive ? "无匹配事件" : "无近期事件"}</div>`;
+  body.innerHTML = meterHtml + rowsHtml;
+}
+
+// One live-progress meter row for an active run (sticky atop the unified log).
+function _formatRunMeter(run) {
+  const m = PURE.formatRunMeter(run);
+  const opLabel = PURE.logOpLabel(m.op);
+  const mach = m.machine ? (m.mode != null ? `${m.machine}·m${m.mode}` : String(m.machine)) : "";
+  const bar = m.pct != null
+    ? `<span class="meter-bar"><span class="meter-fill" style="width:${m.pct}%"></span></span>`
+    : `<span class="meter-bar meter-indeterminate"><span class="meter-fill"></span></span>`;
+  const pctTxt = m.pct != null ? `${m.pct}%` : "…";
+  return `<div class="activity-meter">`
+    + `<span class="activity-op">${_escHtml(opLabel)}</span>`
+    + `<span class="activity-mach">${_escHtml(mach)}</span>`
+    + bar
+    + `<span class="meter-pct">${_escHtml(pctTxt)}</span>`
+    + `<span class="meter-label">${_escHtml(m.label)}</span>`
+    + `</div>`;
 }
 
 // Render ONE canonical log row for every entry — client OR backend. Client
@@ -9884,12 +9906,18 @@ function ensureFastPolling() {
   const wantFast =
     state.currentRunId && String(state.currentRunStatus || "").toLowerCase() === "running";
   if (wantFast && state.fastTimer == null) {
+    // Refresh the unified-log meter immediately on run start (don't wait a tick).
+    // The recurring meter refresh stays on the single activityTimer (1s) so two
+    // timers never race on the activitySince cursor.
+    refreshActivityStrip().catch(() => {});
     state.fastTimer = setInterval(() => {
       refreshCurrentRun().catch(() => {});
     }, 1000);
   } else if (!wantFast && state.fastTimer != null) {
     clearInterval(state.fastTimer);
     state.fastTimer = null;
+    // Run ended — refresh once more so the meter clears / shows the final line.
+    refreshActivityStrip().catch(() => {});
   }
 }
 
