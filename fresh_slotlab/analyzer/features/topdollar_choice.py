@@ -11,6 +11,18 @@ The mechanic: ST=1 ``ReMarks="Trigger"`` opens a session; the player makes
 ``WinCredits`` is a PREVIEW of the cumulative offer value — NOT the real win
 (economy is already handled by SettlementWinAmountRule + trigger_sessions).
 
+**Re-offer machines (M132):** one trigger session may contain MULTIPLE
+mini-games (re-offers): ST=14 picks → ST=15 settle → ST=14 picks again. The
+parser sums the ST=14 picks across the whole trigger session, so ``n_picks``
+can exceed 4. This plugin does NOT crash on ``n_picks > 4`` — such sessions
+bucket into the "4" (reached-max) key and the bad-gamble check generalises to
+"settled (last) offer < best earlier offer". The per-mini-game SPLIT (so each
+re-offer is its own ≤4-pick session with its own settled win) is parser_blind:
+the parser merges a trigger session's re-offers (it keeps only the LAST ST=15
+WinAmount as ``settled_win``), so the per-game pick distribution + per-game
+settle are a future PARSER enhancement, flagged in M132's manifest. The
+ECONOMY/RTP is unaffected (SettlementWinAmountRule reads EACH ST=15 round).
+
 **``RTP_CONTRIBUTION = False``** — economy is already counted; this feature
 must NOT add to the RTP sum or the RTP integrity invariant double-counts.
 
@@ -335,12 +347,20 @@ class TopDollarChoice(AnalyzerFeature):
 
         for s in sessions:
             n = int(s.get("n_picks") or 0)
-            if n < 1 or n > 4:
+            if n < 1:
                 raise RuntimeError(
                     f"topdollar_choice emit: session has n_picks={n!r} "
-                    f"(expected 1-4). Session data: {s!r}. "
+                    f"(expected >= 1). Session data: {s!r}. "
                     f"Check Phase E parser accumulator logic."
                 )
+            # n > 4 occurs on RE-OFFER machines (M132): one trigger session
+            # contains MULTIPLE TopDollar mini-games (the parser sums the ST=14
+            # picks across the re-offers; ST=14 prev includes ST=15). These
+            # bucket into the "4" (reached-max) key — the per-mini-game split is
+            # parser_blind (the parser merges a trigger session's re-offers;
+            # per-game accuracy is a future parser enhancement, flagged in the
+            # machine manifest). M15 / single-game machines have n <= 4 so this
+            # is byte-identical for them (min(n, 4) == n).
             key = str(min(n, 4))
             picks_dist[key] = picks_dist.get(key, 0) + 1
 
@@ -353,13 +373,17 @@ class TopDollarChoice(AnalyzerFeature):
 
             all_offer_values.extend(offers)
 
-            # ── bad gamble (4-pick sessions only) ──
-            if n == 4:
+            # ── bad gamble (reached the forced/max pick: n >= 4) ──
+            # For n == 4 this is byte-identical to the original (offers[:-1] ==
+            # offers[:3], offers[-1] == offers[3]). For n > 4 (re-offer sessions)
+            # it generalises to "the SETTLED (last) offer < the best earlier
+            # offer" over the full merged pick list.
+            if n >= 4:
                 forced_4th_count += 1
-                # Bad gamble: final offer < max of the 3 earlier offers.
-                if len(offers) >= 4:
-                    max_earlier = max(offers[:3])
-                    final = offers[3]
+                # Bad gamble: final (settled) offer < max of the earlier offers.
+                if len(offers) >= 2:
+                    max_earlier = max(offers[:-1])
+                    final = offers[-1]
                     if final < max_earlier:
                         bad_gamble_count += 1
 

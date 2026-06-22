@@ -211,8 +211,8 @@ def _assert_record_byte_identical(rec_a, rec_b, tag: str):
     ("M273", "mode_1"),              # WheelSelector freespin (Type 2)
     ("M201", "mode_1"),              # CommonSelector lockrespin
     ("M257", "mode_1"),              # CommonSelector freespin
-    ("M99", "mode_1"),               # D_other class
-    ("M112", "mode_1"),              # FinalMinigame summary+sub
+    ("M99", "mode_1"),               # ST97/ST98 dual-emit (now configured; noop test passes EMPTY rules, so still a valid empty-vs-None invariant)
+    ("M112", "mode_1"),              # ST97/ST98 dual-emit (now configured; noop test passes EMPTY rules)
 ])
 class TestRulesDispatchNoop:
     def test_no_rules_vs_empty_rules_identical(self, machine, mode_dir, round_win_config):
@@ -228,12 +228,15 @@ class TestRulesDispatchNoop:
 
 
 # Machines that genuinely have NO rule entry (rule absent from
-# config). M14 is paid-only baseline; M99/M112 are D_other left
-# for a future sub-round-dedupe rule.
+# config). M14 is the paid-only baseline; M29/M45 are unregistered
+# roster machines with no rule. (M99/M112 USED to be here as "D_other
+# left for a future sub-round-dedupe rule" — they are now configured
+# with the ST97-preview-suppress + st98 settlement dual-emit rules,
+# so they no longer belong in the no-rule set.)
 @pytest.mark.parametrize("machine,mode_dir", [
     ("M14", "mode_1"),
-    ("M99", "mode_1"),
-    ("M112", "mode_1"),
+    ("M29", "mode_1"),
+    ("M45", "mode_1"),
 ])
 def test_unconfigured_machine_loads_no_rules(machine, mode_dir, round_win_config):
     """The actual config (TopDollar + synthesize catch-all) must

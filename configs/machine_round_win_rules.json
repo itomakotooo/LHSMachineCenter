@@ -800,7 +800,8 @@
         "M132$TopDollarSelector$1$",
         "M132$TopDollarSelector$2$40",
         "M12",
-        "M90"
+        "M90",
+        "M132"
       ]
     },
     "m24_collect_residual": {
@@ -1002,10 +1003,135 @@
       "applies_to": [
         "M271"
       ]
+    },
+    "m214_bare_settlement": {
+      "_doc": "M214 bare settlement/feature: STs [1, 2] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          1,
+          2
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M214"
+      ]
+    },
+    "m250_bare_settlement": {
+      "_doc": "M250 bare settlement/feature: STs [2, 140] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2,
+          140
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M250"
+      ]
+    },
+    "m270_bare_settlement": {
+      "_doc": "M270 bare settlement/feature: STs [2, 140] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          2,
+          140
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M270"
+      ]
+    },
+    "m263_bare_settlement": {
+      "_doc": "M263 bare settlement/feature: STs [126, 140] carry WinCredits with NO PayoutIdToWinAmount (pure bare win, never co-occurring with a payline pid) -> synth one honest st<N> pid instead of leaking to _unattributed_st<N>. Config-only, base-excluded.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          126,
+          140
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M263"
+      ]
+    },
+    "m99_st97_preview_suppress": {
+      "_doc": "M99 dual-emit dedup. ST97 (WheelSpin) emits the per-spin wheel results as a PREVIEW that does NOT credit the wallet (verified: LastCredits moves 0/1301 on ST97 win rounds). ST98 is the REAL settlement that credits the wallet (LastCredits moves 317/317) with WinCredits == the block's ST97 sum (per-block EXACT, 317/317 blocks). Counting BOTH double-counts the bonus by ~48% (integrity-gate-INVISIBLE: each self-attributes). Suppress ST97 as a phantom preview (win->0, no pid); the companion synthesize_pay_id mints st98 for the real settlement. Reuses SettlementWinAmountRule's phantom mechanism (same 'preview round shows value but does not pay' concept as TopDollar ST14).",
+      "type": "settlement_winamount",
+      "params": {
+        "phantom_spin_types": [
+          97
+        ],
+        "settlement_spin_types": []
+      },
+      "applies_to": [
+        "M99"
+      ]
+    },
+    "m99_st98_settlement": {
+      "_doc": "M99 ST98 real settlement (credits the wallet; the block-total of the suppressed ST97 WheelSpin previews): bare WinCredits with no PayoutIdToWinAmount -> synth pid st98. Paired with m99_st97_preview_suppress (which zeros the ST97 preview) to fix the dual-emit double-count.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          98
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M99"
+      ]
+    },
+    "m112_st97_preview_suppress": {
+      "_doc": "M112 dual-emit dedup. ST97 (WheelSpin) emits the per-spin wheel results as a PREVIEW that does NOT credit the wallet (verified: LastCredits moves 0/1530 on ST97 win rounds). ST98 is the REAL settlement that credits the wallet (LastCredits moves 306/306) with WinCredits == the block's ST97 sum (per-block EXACT, 306/306 blocks). Counting BOTH double-counts the bonus by ~48% (integrity-gate-INVISIBLE: each self-attributes). Suppress ST97 as a phantom preview (win->0, no pid); the companion synthesize_pay_id mints st98 for the real settlement. Reuses SettlementWinAmountRule's phantom mechanism (same 'preview round shows value but does not pay' concept as TopDollar ST14).",
+      "type": "settlement_winamount",
+      "params": {
+        "phantom_spin_types": [
+          97
+        ],
+        "settlement_spin_types": []
+      },
+      "applies_to": [
+        "M112"
+      ]
+    },
+    "m112_st98_settlement": {
+      "_doc": "M112 ST98 real settlement (credits the wallet; the block-total of the suppressed ST97 WheelSpin previews): bare WinCredits with no PayoutIdToWinAmount -> synth pid st98. Paired with m112_st97_preview_suppress (which zeros the ST97 preview) to fix the dual-emit double-count.",
+      "type": "synthesize_pay_id",
+      "params": {
+        "spin_types": [
+          98
+        ],
+        "label_format": "spin_type"
+      },
+      "applies_to": [
+        "M112"
+      ]
+    },
+    "m206_topdollar_settlement": {
+      "_doc": "M206 TopDollar (ST14 offer phantom + ST15 settlement) where the bonus can be triggered from a RESPIN: a respin ST50 carries the '666' trigger marker (the paid base ST1 may be a normal WIN with no anchor), so the trigger-session delegate (used by the shared topdollar_selector_settlement rule) MISSES those settlements -> orphan _unattributed_st15 (verified: 2/325 ST15 blocks are respin-triggered). settlement_label_format='spin_type' attributes EACH ST15 WinAmount to a round-level pid 'st15' instead of delegating to the session, capturing every settlement regardless of where the trigger sits. ST14 offers still phantom-zero. RTP identical (extract_win unchanged); the session-dim KPI still books the bonus to its trigger session. M15/M12/M90/M132 keep the session-centric shared rule (settlement_label_format default None -> byte-identical).",
+      "type": "settlement_winamount",
+      "params": {
+        "phantom_spin_types": [
+          14
+        ],
+        "settlement_spin_types": [
+          15
+        ],
+        "settlement_label_format": "spin_type"
+      },
+      "applies_to": [
+        "M206"
+      ]
     }
   },
   "_added_2026_06_18": "resample-wave settlement synth rules (required: M147/M163/M239 ST2, M282 ST125; forward-compat: settlement-role STs paying 0 in cached bucket)",
   "_added_2026_06_18_wave2": "resample wave2 settlement synth rules",
   "_added_2026_06_18_deriver": "deriver-driven onboard settlement synth rules",
-  "_added_2026_06_19_collect_residual": "WinResidualRule collect-coin residual attribution + bare-settlement synth"
+  "_added_2026_06_19_collect_residual": "WinResidualRule collect-coin residual attribution + bare-settlement synth",
+  "_added_2026_06_20_boundaries": "TopDollar reuse (M206/M132) + ST97/ST98 dual-emit dedup (M99/M112). No base_hash flip; topdollar_choice n_picks>4 fix is base-excluded."
 }

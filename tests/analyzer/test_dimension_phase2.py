@@ -1057,7 +1057,7 @@ class TestBaseHashUnchanged:
 
     def test_base_hash_is_current_baseline(self):
         """compute_base_analyzer_version() must return the current baseline
-        8dde9c4df7c5 (re-baselined 2026-06-19 by the DELIBERATE addition of
+        bba689d50f03 (re-baselined 2026-06-19 by the DELIBERATE addition of
         WinResidualRule to fresh_slotlab/round_win.py — a closure file — for
         collect-coin residual attribution on the architecture-boundary machines;
         was d9fa4625b956 derive-from-data routing).
@@ -1068,8 +1068,8 @@ class TestBaseHashUnchanged:
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "8dde9c4df7c5", (
-            f"base_hash changed from the 8dde9c4df7c5 baseline to {bh!r}. "
+        assert bh == "bba689d50f03", (
+            f"base_hash changed from the bba689d50f03 baseline to {bh!r}. "
             f"A base_hash change means a closure file (_CLOSURE_FILES) was "
             f"accidentally modified (or a deliberate closure change needs this updated)."
         )

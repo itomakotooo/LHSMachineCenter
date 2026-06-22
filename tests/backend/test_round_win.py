@@ -154,6 +154,56 @@ class TestSettlementWinAmountRule:
         assert rule.extract_payouts(r) == {}
 
 
+class TestSettlementWinAmountRuleRoundLevel:
+    """settlement_label_format='spin_type': attribute the settlement WinAmount
+    to a round-level st{N} pid instead of delegating to the trigger session
+    (M206: respin-triggered TopDollar whose trigger sits on a non-paid round)."""
+
+    def _rule(self) -> SettlementWinAmountRule:
+        return SettlementWinAmountRule(
+            phantom_spin_types=[14], settlement_spin_types=[15],
+            settlement_label_format="spin_type",
+        )
+
+    def test_settlement_mints_round_level_pid(self):
+        rule = self._rule()
+        r = {"SpinType": 15, "CostCredits": 0, "WinAmount": 60000}
+        assert rule.extract_win(r) == 60000.0
+        assert rule.extract_payouts(r) == {"st15": 60000.0}
+
+    def test_phantom_still_suppressed(self):
+        """Offers never pay even in round-level mode."""
+        rule = self._rule()
+        r = {"SpinType": 14, "CostCredits": 0, "WinCredits": 30000}
+        assert rule.extract_win(r) == 0.0
+        assert rule.extract_payouts(r) == {}
+
+    def test_zero_winamount_settlement_no_pid(self):
+        rule = self._rule()
+        r = {"SpinType": 15, "CostCredits": 0, "WinAmount": 0}
+        assert rule.extract_payouts(r) == {}
+
+    def test_default_format_still_delegates(self):
+        """Without the param, behaviour is byte-identical to the legacy
+        session-centric mode (settlement suppresses -> {})."""
+        rule = SettlementWinAmountRule(phantom_spin_types=[14], settlement_spin_types=[15])
+        r = {"SpinType": 15, "CostCredits": 0, "WinAmount": 60000}
+        assert rule.extract_payouts(r) == {}
+
+    def test_invalid_settlement_label_format_raises(self):
+        with pytest.raises(ValueError, match="settlement_label_format"):
+            SettlementWinAmountRule(
+                phantom_spin_types=[14], settlement_spin_types=[15],
+                settlement_label_format="bogus",
+            )
+
+    def test_collect_label_not_a_fallback_bucket(self):
+        rule = self._rule()
+        r = {"SpinType": 15, "CostCredits": 0, "WinAmount": 60000}
+        (label,) = rule.extract_payouts(r).keys()
+        assert not label.startswith(("_unattributed_", "_other", "_default", "_misc"))
+
+
 # ---------------------------------------------------------------------
 # SynthesizePayIdRule
 # ---------------------------------------------------------------------
