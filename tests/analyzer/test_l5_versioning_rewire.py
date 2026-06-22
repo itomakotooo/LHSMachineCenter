@@ -133,6 +133,22 @@ class TestM15NewPath:
             if _pseudo_id not in _derived_with_exts:
                 _derived_with_exts.append(_pseudo_id)
 
+        # Fold round_win rule pseudo-entries ("rw:<type_str>") for M15 (it uses
+        # settlement_winamount). compute_effective_version_for_machine does this
+        # after the xt: block; the independent expected_hash must mirror it.
+        from fresh_slotlab.analyzer.versioning import _used_round_win_types
+        from fresh_slotlab.round_win_rules import (
+            discover_rules as _disc_rules,
+            rule_type_hash as _rw_hash,
+        )
+        _disc_rules()
+        for _rw_type in sorted(_used_round_win_types("M15")):
+            _pseudo_id = f"rw:{_rw_type}"
+            if _pseudo_id not in feature_hashes:
+                feature_hashes[_pseudo_id] = _rw_hash(_rw_type)
+            if _pseudo_id not in _derived_with_exts:
+                _derived_with_exts.append(_pseudo_id)
+
         expected_hash = compute_effective_analyzer_version(
             base_hash=base_hash,
             feature_hashes=feature_hashes,

@@ -562,24 +562,20 @@ class TestInjectBugProof:
 #    fleet's reports stale, the playtype-rearch anti-goal). This is the
 #    value-agnostic structural invariant; we do NOT pin a tuned number.
 #
-#    HONESTY NOTE (read carefully — the W4 brief asked to "confirm base_hash still
-#    c5d2199142c3"): the LIVE base_hash at HEAD is **3ddaa183f38c**, NOT
-#    c5d2199142c3. This is a PRE-EXISTING, COMMITTED framework change that
-#    predates M155 — commit 58a28fd ("paid-unit framework fix + onboard M63/M104")
-#    modified `fresh_slotlab/analyzer/core/parser.py` (a _CLOSURE_FILES member),
-#    flipping the base_hash from c5d2199142c3 (last seen at 56edcdd / 58a28fd~1)
-#    to 3ddaa183f38c. M155 onboarding touches NEITHER parser.py NOR any other
-#    closure file (it adds only configs/machine_manifests/M155.json + this test).
-#    So pinning c5d2199142c3 here would make M155's suite RED for a regression
-#    M155 did not cause. The value-agnostic invariant M155 OWNS is: "config-only
-#    onboard => NO closure file delta vs HEAD => base_hash unchanged by M155".
-#    The snapshot pin below is to the CURRENT framework reality (HEAD), and the
-#    no-delta test is what actually guards the config-only property.
+#    HONESTY NOTE: the LIVE base_hash at HEAD is a moving framework snapshot, NOT a
+#    value M155 owns. M155 onboarding touches NO closure file (it adds only
+#    configs/machine_manifests/M155.json + this test). The value-agnostic invariant
+#    M155 OWNS is: "config-only onboard => NO closure file delta vs HEAD => base_hash
+#    unchanged by M155" — guarded by test_m155_modifies_no_closure_file. The snapshot
+#    pin below just tracks the CURRENT framework reality so a real closure regression
+#    elsewhere still trips this suite.
 # ---------------------------------------------------------------------------
 
-# The base_hash at HEAD as of this onboard (drifted from c5d2199142c3 at 58a28fd —
-# a framework parser.py change, NOT M155). Snapshot, not a tuned value.
-_BASE_HASH_AT_HEAD = "3ddaa183f38c"
+# The base_hash at HEAD as of this onboard. A framework SNAPSHOT (not an M155 value):
+# re-baselined 2026-06-22 by the pluggable round_win rule-engine refactor (rule types
+# moved to base-EXCLUDED round_win_rules/). Prior framework baselines: 3ddaa183f38c →
+# bba689d50f03 → ddde50975d25.
+_BASE_HASH_AT_HEAD = "ddde50975d25"
 
 
 class TestBaseHashConfigOnly:
@@ -606,7 +602,7 @@ class TestBaseHashConfigOnly:
 
     def test_base_hash_matches_head_snapshot(self):
         """base_hash equals the CURRENT HEAD snapshot. This is NOT c5d2199142c3 —
-        that drifted to 3ddaa183f38c at framework commit 58a28fd (parser.py edit),
+        that drifted to ddde50975d25 at framework commit 58a28fd (parser.py edit),
         which predates and is independent of M155. With M155 adding no closure
         file (test above), the base_hash is whatever HEAD already produces.
 
@@ -619,5 +615,5 @@ class TestBaseHashConfigOnly:
             f"base_hash is {bh!r}, expected the HEAD snapshot {_BASE_HASH_AT_HEAD!r}. "
             f"M155 adds no closure file, so a change here means a closure file moved "
             f"after this onboard. (Brief-requested c5d2199142c3 was already superseded "
-            f"by 3ddaa183f38c at framework commit 58a28fd — a parser.py change, not M155.)"
+            f"by ddde50975d25 at framework commit 58a28fd — a parser.py change, not M155.)"
         )

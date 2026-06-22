@@ -519,13 +519,14 @@ class TestM70InjectBugProofsDoc:
 class TestBaseHashUnchanged:
     def test_base_hash_is_current_baseline(self):
         """M70 onboarding adds only a manifest (config) — it touches NO base-closure
-        file. The fleet base_hash baseline is 3ddaa183f38c (re-baselined 2026-06-17
-        by the deliberate paid-unit closure fix; was c5d2199142c3). M70 must equal
-        the current baseline — a divergence here means a closure file was edited."""
+        file. The fleet base_hash baseline is ddde50975d25 (re-baselined 2026-06-22
+        by the pluggable round_win rule-engine refactor — rule types moved to
+        base-EXCLUDED round_win_rules/; prior pin 3ddaa183f38c was stale). M70 must
+        equal the current baseline — a divergence here means a closure file was edited."""
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "3ddaa183f38c", (
-            f"base_hash changed from the 3ddaa183f38c baseline to {bh!r}. M70 "
+        assert bh == "ddde50975d25", (
+            f"base_hash changed from the ddde50975d25 baseline to {bh!r}. M70 "
             f"onboarding is config/manifest-only — a base_hash change means a "
             f"closure file was accidentally modified (or a new deliberate closure "
             f"change needs this baseline updated)."

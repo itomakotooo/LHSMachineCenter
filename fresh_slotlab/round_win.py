@@ -26,12 +26,36 @@ and ``extract_round_payouts`` returns ``r.get("PayoutIdToWinAmount")``
 or ``{}``. Machines absent from
 ``configs/machine_round_win_rules.json`` see zero behavioural change.
 
+Architecture (pluggable rule types)
+-----------------------------------
+This module holds only the SHARED core: the ``RoundWinRule`` ABC, the
+dispatch functions (``extract_round_win`` / ``extract_round_payouts`` /
+``extract_round_trigger_anchor`` / ``round_has_credited_win``),
+``load_rules_for_machine``, and the small helpers. It is in
+``_CLOSURE_FILES`` — changing the ABC contract or the dispatch is a
+legitimate fleet-wide base_hash flip.
+
+The rule TYPE classes live as auto-discovered, base-EXCLUDED plugins under
+``fresh_slotlab/round_win_rules/`` (mirroring ``features/`` + ``st_extract/``).
+Adding OR editing a rule type re-flags only the machines that declare it (via
+its ``rw:<type_str>`` ``effective_version`` component), never the whole fleet.
+
 Adding a new rule type:
-  1. Subclass ``RoundWinRule`` here.
-  2. Override ``extract_win`` and/or ``extract_payouts`` as needed.
-  3. Register in ``RULE_REGISTRY``.
-  4. Add config entry pointing at the new ``type`` string.
+  1. Create ``fresh_slotlab/round_win_rules/<type_str>.py``.
+  2. Subclass ``RoundWinRule`` (import it from ``fresh_slotlab.round_win``);
+     set ``TYPE_STR`` and override ``extract_win`` / ``extract_payouts`` /
+     ``extract_trigger_anchor`` as needed.
+  3. Call ``register_rule("<type_str>", <Class>)`` at the bottom of the file.
+  4. Add a config entry in ``machine_round_win_rules.json`` pointing at
+     ``type: "<type_str>"`` with an ``applies_to`` list.
   5. Add unit tests.
+  No closure file is edited — no base_hash flip.
+
+The 4 built-in rule classes (``SettlementWinAmountRule``,
+``SynthesizePayIdRule``, ``WinResidualRule``, ``BCMCycleAnchorRule``) and
+``RULE_REGISTRY`` remain importable from ``fresh_slotlab.round_win`` for
+backward compatibility via a lazy module-level ``__getattr__`` (they now live
+in ``round_win_rules/``).
 """
 from __future__ import annotations
 
@@ -160,419 +184,13 @@ class RoundWinRule:
         return None
 
 
-class SettlementWinAmountRule(RoundWinRule):
-    """TopDollar selector family (M12/M15/M90/M132): bonus rounds
-    are ST=14 selector offer (phantom) + ST=15 settlement (real
-    payout in WinAmount, no WinCredits / no PayoutIdToWinAmount).
-
-    Win extraction:
-      * settlement ST -> ``WinAmount`` (real payout)
-      * phantom ST -> ``0`` (selector offer is preview, not paid)
-      * paid rounds (CostCredits>0) -> no override (WinCredits truth)
-
-    Payout attribution (``settlement_label_format`` controls it):
-      * Default (``None``): both phantom AND settlement rounds return
-        ``{}`` -- the upstream emits no per-round PayoutIdToWinAmount on
-        either, so round-level pid aggregation gets nothing to credit.
-        Real attribution is done by trigger_sessions.compute_trigger_sessions
-        which adds session_win to the trigger pay_id (typically '666' on
-        TopDollar machines) found on the paid trigger round preceding the
-        bonus block. This is the SESSION-CENTRIC mode (M12/M15/M90/M132).
-      * ``"spin_type"``: settlement rounds attribute their ``WinAmount`` to
-        a round-level synthetic pid ``f"st{N}"`` instead of delegating to the
-        trigger session. Use when the bonus can be triggered from a NON-paid
-        round (e.g. M206: a respin ST=50 carries the '666' trigger, so the
-        paid opener has no anchor and the trigger-session attribution misses
-        those settlements -> orphan _unattributed_stN). Round-level attribution
-        captures EVERY settlement regardless of where the trigger sits.
-        Phantom rounds still return ``{}`` (offers never pay). RTP is identical
-        either way (extract_win is unchanged); only the pid the win lands on
-        differs, and the session-dim KPI still books to the trigger session.
-    """
-
-    _VALID_SETTLEMENT_FORMATS = frozenset({"spin_type"})
-
-    def __init__(
-        self,
-        phantom_spin_types: list[int] | tuple[int, ...] | None = None,
-        settlement_spin_types: list[int] | tuple[int, ...] | None = None,
-        settlement_label_format: str | None = None,
-    ) -> None:
-        if settlement_label_format is not None and settlement_label_format not in self._VALID_SETTLEMENT_FORMATS:
-            raise ValueError(
-                f"settlement_label_format={settlement_label_format!r} not in "
-                f"{sorted(self._VALID_SETTLEMENT_FORMATS)} (or None)"
-            )
-        self.phantom_st: frozenset[int] = frozenset(int(x) for x in (phantom_spin_types or ()))
-        self.settlement_st: frozenset[int] = frozenset(int(x) for x in (settlement_spin_types or ()))
-        self.settlement_label_format = settlement_label_format
-
-    def _matches_bonus(self, round_dict: dict) -> int | None:
-        """Return the int SpinType if the round is a non-paid bonus
-        round whose SpinType is in either configured group.
-        Otherwise None (rule does not apply).
-        """
-        if not isinstance(round_dict, dict):
-            return None
-        if _is_paid_round(round_dict):
-            return None
-        st = round_dict.get("SpinType")
-        try:
-            st_int = int(st) if st is not None else None
-        except (TypeError, ValueError):
-            return None
-        if st_int is None:
-            return None
-        if st_int in self.settlement_st or st_int in self.phantom_st:
-            return st_int
-        return None
-
-    def extract_win(self, round_dict: dict, ctx: dict | None = None) -> float | None:
-        st_int = self._matches_bonus(round_dict)
-        if st_int is None:
-            return None
-        if st_int in self.settlement_st:
-            return _to_float(round_dict.get("WinAmount"), default=0.0)
-        # phantom_st
-        return 0.0
-
-    def extract_payouts(self, round_dict: dict, ctx: dict | None = None) -> dict[str, float] | None:
-        st_int = self._matches_bonus(round_dict)
-        if st_int is None:
-            return None
-        # Settlement ST with round-level attribution requested: mint a synthetic
-        # pid for the WinAmount so the settlement is credited at round level
-        # (captures bonuses triggered from a non-paid round, which the trigger-
-        # session delegate would miss). Phantom rounds always suppress (offers
-        # never pay). Default (no settlement_label_format): suppress both and let
-        # trigger_sessions credit the trigger pay_id (session-centric).
-        if (
-            self.settlement_label_format is not None
-            and st_int in self.settlement_st
-        ):
-            win = _to_float(round_dict.get("WinAmount"), default=0.0)
-            if win <= 0:
-                return {}
-            if self.settlement_label_format == "spin_type":
-                return {f"st{st_int}": win}
-        return {}
-
-
-class SynthesizePayIdRule(RoundWinRule):
-    """For bonus rounds where the upstream emits ``WinCredits > 0``
-    but ``PayoutIdToWinAmount`` is empty / None, synthesize a pay_id
-    label so the win shows up in the payid drilldown.
-
-    Three label formats (chosen via ``label_format`` param):
-
-      * ``"multiplier"``: ``str(int(win / bet))`` -- one row per
-        bet multiplier, matching upstream FeatureWin's "5"/"10"/
-        "20"/"50"/"100" convention. Use when win is a clean integer
-        multiple of bet (Wheel bonus on M279/M214/M250/M260 ST=2).
-        Falls through to ``None`` if multiplier is fractional.
-
-      * ``"spin_type"``: ``f"st{spin_type}"`` -- one row per
-        SpinType. Generic catch-all for mechanics where win is
-        not a clean multiplier (Freespin/Respin coin-collect on
-        M24/M100/M268/M260; M250 paid spins missing pid).
-        Always synthesizes (never falls through).
-
-      * ``"spin_type_multiplier"``: ``f"st{st}_x{mult}"`` if integer
-        multiplier else ``f"st{st}"``. Combines the two above.
-
-    Win extraction:
-      * Default ``None`` -- upstream WinCredits is correct; only
-        pid attribution needs synthesis.
-
-    Payout attribution:
-      * For configured SpinTypes with WinCredits > 0:
-          if PayoutIdToWinAmount empty: synthesize {label: WinCredits}
-          if PayoutIdToWinAmount non-empty: no override (pass through)
-      * For non-configured SpinTypes: no override.
-
-    The ``apply_when_pid_present`` param (default False) controls
-    whether to override even when PayoutIdToWinAmount is non-empty
-    -- useful for machines where the existing pid attribution is
-    incomplete or wrong.
-    """
-
-    _VALID_FORMATS = frozenset({"multiplier", "spin_type", "spin_type_multiplier"})
-
-    def __init__(
-        self,
-        spin_types: list[int] | tuple[int, ...] | None = None,
-        label_format: str = "spin_type",
-        apply_when_pid_present: bool = False,
-    ) -> None:
-        if label_format not in self._VALID_FORMATS:
-            raise ValueError(
-                f"label_format={label_format!r} not in {sorted(self._VALID_FORMATS)}"
-            )
-        self.spin_types: frozenset[int] = frozenset(int(x) for x in (spin_types or ()))
-        self.label_format = label_format
-        self.apply_when_pid_present = bool(apply_when_pid_present)
-
-    def extract_payouts(self, round_dict: dict, ctx: dict | None = None) -> dict[str, float] | None:
-        if not isinstance(round_dict, dict):
-            return None
-        st = round_dict.get("SpinType")
-        try:
-            st_int = int(st) if st is not None else None
-        except (TypeError, ValueError):
-            return None
-        if st_int is None or st_int not in self.spin_types:
-            return None
-
-        win = _to_float(round_dict.get("WinCredits"), default=0.0)
-        if win <= 0:
-            return None
-
-        pid = round_dict.get("PayoutIdToWinAmount")
-        pid_present = isinstance(pid, dict) and bool(pid) and any(
-            _to_float(v, 0.0) != 0.0 for v in pid.values()
-        )
-        if pid_present and not self.apply_when_pid_present:
-            return None
-
-        # Choose label.
-        bet = 0.0
-        ba = round_dict.get("BetAmount")
-        if ba is not None:
-            bet = _to_float(ba, default=0.0)
-        if bet <= 0 and ctx is not None:
-            bet = _to_float(ctx.get("bet"), default=0.0)
-
-        label = self._format_label(st_int, win, bet)
-        if label is None:
-            return None
-        return {label: win}
-
-    def _format_label(self, st: int, win: float, bet: float) -> str | None:
-        if self.label_format == "spin_type":
-            return f"st{st}"
-
-        # Try integer multiplier
-        int_mult: int | None = None
-        if bet > 0:
-            ratio = win / bet
-            # Tolerate tiny float drift; reject anything not within 0.01 of integer.
-            if abs(ratio - round(ratio)) < 0.01:
-                int_mult = int(round(ratio))
-
-        if self.label_format == "multiplier":
-            if int_mult is None:
-                # Fractional -- can't synthesize a clean multiplier label,
-                # fall through to default (legacy behavior: this win
-                # remains unattributed, surfaces as a gap).
-                return None
-            return str(int_mult)
-
-        # spin_type_multiplier
-        if int_mult is None:
-            return f"st{st}"
-        return f"st{st}_x{int_mult}"
-
-
-class WinResidualRule(RoundWinRule):
-    """Collect-coin attribution: a configured SpinType's round pays a
-    payline win (itemized in ``PayoutIdToWinAmount``) PLUS an additional
-    coin-collect win that the upstream does NOT itemize per pay_id, so
-    ``WinCredits > sum(PayoutIdToWinAmount)``. The unattributed delta
-    (the "residual") is the collect-coin win.
-
-    The collect mechanic is per-spin realized (NOT a deferred
-    accumulation-settlement): ``WinCredits`` already carries the full
-    realized win each round (paylines + coins). Coin fields such as
-    ``PigCredits`` / ``CreditsSymbols`` / ``SymbolIndexToRewards`` /
-    ``RewardIdToCollectAmount`` only *itemize which symbols paid* — the
-    total is in ``WinCredits``. Verified on real rawdata: M24 ST46
-    (PigCredits, 98.9% residual), M262 ST140 (AccCredits/CollectCount is
-    a SEPARATE BCM metronome that never settles the residual), M254 ST154
-    + M125 ST138 (coin JSON itemizes, total in WinCredits). So this rule
-    NEVER changes ``chunk_win`` (the RTP) — it is PURE attribution: it
-    closes the ``sum(payid)==chunk_win`` invariant so the residual lands
-    in a named pid instead of the ``_unattributed_st<N>`` /
-    ``_unattributed_residual`` alarm buckets.
-
-    Why a NEW rule and not ``SynthesizePayIdRule``: that rule either
-    SKIPS the round when payline pids are present (``apply_when_pid_present``
-    False — residual leaks to the fallback bucket) or REPLACES the whole
-    payout with a single ``{st<N>: WinCredits}`` (``apply_when_pid_present``
-    True — destroys the payline symbol breakdown AND mislabels the payline
-    win as collect). This rule does neither: it KEEPS the real payline
-    pids and ADDS only the residual under a distinct collect label.
-
-    Win extraction:
-      * Default ``None`` — ``WinCredits`` is the correct chunk_win;
-        only pid attribution needs the residual closer.
-
-    Payout attribution, for configured SpinTypes with ``WinCredits > 0``:
-      * ``residual = WinCredits - sum(real PayoutIdToWinAmount values)``
-      * ``residual <= tol`` (round fully payline-attributed, or
-        over-attributed) → ``None`` (pass through to the round's own pids).
-      * ``residual > tol`` → ``{**real_pids, collect_label: residual}``.
-        Subsumes the bare-win case (``real_pids`` empty → the whole win
-        is the residual → ``{collect_label: WinCredits}``, identical to
-        ``SynthesizePayIdRule`` spin_type on that round).
-
-    Label (``label_format``):
-      * ``"spin_type_collect"`` (default): ``f"st{N}_collect"`` — a
-        distinct row so the collect total never reads as a payline symbol
-        pid. The discrete per-symbol/per-coin collect distribution is a
-        dedicated analysis (charter invariant 4: one honest feature row;
-        shape lives in an analysis, not spread across pids).
-      * ``"spin_type"``: ``f"st{N}"`` — matches the SynthesizePayIdRule
-        bare-settlement convention when the collect is the ST's only win.
-
-    Both labels are real pids (no reserved ``_`` prefix) → they pass the
-    rtp-integrity Layer-2 fallback-bucket check.
-    """
-
-    _VALID_FORMATS = frozenset({"spin_type_collect", "spin_type"})
-    # Integer credit values → 0.5 matches the per-round + chunk-level
-    # residual closers in core/parser.py (same tolerance, same intent).
-    _RESIDUAL_TOL: float = 0.5
-
-    def __init__(
-        self,
-        spin_types: list[int] | tuple[int, ...] | None = None,
-        label_format: str = "spin_type_collect",
-    ) -> None:
-        if label_format not in self._VALID_FORMATS:
-            raise ValueError(
-                f"label_format={label_format!r} not in {sorted(self._VALID_FORMATS)}"
-            )
-        self.spin_types: frozenset[int] = frozenset(int(x) for x in (spin_types or ()))
-        self.label_format = label_format
-
-    def _collect_label(self, st: int) -> str:
-        if self.label_format == "spin_type":
-            return f"st{st}"
-        return f"st{st}_collect"
-
-    def extract_payouts(self, round_dict: dict, ctx: dict | None = None) -> dict[str, float] | None:
-        if not isinstance(round_dict, dict):
-            return None
-        st = round_dict.get("SpinType")
-        try:
-            st_int = int(st) if st is not None else None
-        except (TypeError, ValueError):
-            return None
-        if st_int is None or st_int not in self.spin_types:
-            return None
-
-        win = _to_float(round_dict.get("WinCredits"), default=0.0)
-        if win <= 0:
-            return None
-
-        # Real payline pids on this round (a trigger-token pid with value
-        # 0 contributes 0 to the sum, so it is preserved but does not
-        # affect the residual).
-        pid = round_dict.get("PayoutIdToWinAmount")
-        real: dict[str, float] = {}
-        if isinstance(pid, dict):
-            real = {str(k): _to_float(v, 0.0) for k, v in pid.items()}
-        pid_sum = sum(real.values())
-
-        residual = win - pid_sum
-        if residual <= self._RESIDUAL_TOL:
-            # Fully payline-attributed (or over-attributed) — nothing to
-            # add. Pass through to the round's own pids unchanged.
-            return None
-
-        label = self._collect_label(st_int)
-        out = dict(real)
-        # Defensive: a real pid literally named like the collect label is
-        # impossible (real pids are numeric symbol ids) but accumulate to
-        # be safe rather than clobber.
-        out[label] = out.get(label, 0.0) + residual
-        return out
-
-
-class BCMCycleAnchorRule(RoundWinRule):
-    """Synthesize a trigger anchor on paid rounds where a buff-collection
-    cycle completes (i.e. ``CollectCount == cycle_peak``).
-
-    Covers the ``BuffCollectionMap`` mechanic used by the 159-machine
-    BCM family. The bonus feature fires once per cycle when the buff
-    counter reaches the peak; the math machine does NOT surface this
-    transition through ``PayoutIdToWinAmount`` (the trigger round
-    carries ``pid={}`` or only co-occurring regular-payline pids).
-    Without this rule, the bonus block's wins fall through every
-    layer of pay_id attribution and land in the ``_unattributed_st<N>``
-    catch-all -- silently, since the invariant
-    ``sum(payid_win)==chunk_win`` is force-closed by the synthesizer.
-
-    Verified 2026-05-12 on M274 mode 1 (8.25% of bonus rounds, 315 of
-    315 unattributed blocks deterministically preceded by paid round
-    with ``CollectCount==1000``; OLD cfg md5 showed 0% fallback, new
-    cfg introduced the milestone path). Fleet sweep across 117 cached
-    BCM (machine, mode) pairs found 55 with fallback_sum >0.5% of
-    chunk_win -- M250 mode 1/2/5/7 at 100%, M268/M260/M264 at 70-90%.
-
-    The cycle peak is detected by
-    ``fresh_slotlab.round_classification.detect_cycle_peak`` over the
-    full per-robot rounds list and passed via ``ctx["cycle_peak"]``.
-    Pass-through when:
-
-      * ``ctx`` is None or missing ``"cycle_peak"`` -- caller is not
-        wired for BCM detection (defensive).
-      * ``cycle_peak is None`` -- chunk too short to observe a reset
-        (single-chunk machines whose cycle is longer than the chunk).
-      * The round is not paid (``CostCredits<=0``) -- bonus rounds
-        themselves carry no CollectCount and are never trigger rounds.
-      * ``CollectCount != cycle_peak`` -- this paid round is not at
-        cycle completion.
-
-    Fires returning ``[anchor_pid]`` (default ``"_bcm_cycle"``). The
-    dispatcher merges this into the default ``PayoutIdToWinAmount``
-    win==0 extraction; if a paid round has both a real pay_id anchor
-    (rare overlap, e.g. M274 has 5/3902 trigger rounds with both '5801'
-    and CC==peak) the analyzer's anchor-selection picks max-numeric so
-    the real pid wins and the synthetic anchor is dropped harmlessly.
-    """
-
-    def __init__(
-        self,
-        anchor_pid: str = "_bcm_cycle",
-        cycle_field: str = "CollectCount",
-    ) -> None:
-        self.anchor_pid = str(anchor_pid)
-        self.cycle_field = str(cycle_field)
-
-    def extract_trigger_anchor(self, round_dict: dict, ctx: dict | None = None) -> list[str] | None:
-        if not isinstance(round_dict, dict):
-            return None
-        if not is_paid_round(round_dict):
-            return None
-        if not isinstance(ctx, dict):
-            return None
-        peak = ctx.get("cycle_peak")
-        if peak is None:
-            return None
-        try:
-            peak_int = int(peak)
-        except (TypeError, ValueError):
-            return None
-        if peak_int < 1:
-            return None
-        cv = round_dict.get(self.cycle_field)
-        try:
-            cv_int = int(cv) if cv is not None else None
-        except (TypeError, ValueError):
-            return None
-        if cv_int != peak_int:
-            return None
-        return [self.anchor_pid]
-
-
-# Stable type-string -> class. Add new rule types here.
-RULE_REGISTRY: dict[str, type[RoundWinRule]] = {
-    "settlement_winamount": SettlementWinAmountRule,
-    "synthesize_pay_id": SynthesizePayIdRule,
-    "win_residual": WinResidualRule,
-    "bcm_cycle_anchor": BCMCycleAnchorRule,
-}
+# ---------------------------------------------------------------------------
+# Rule TYPE classes + RULE_REGISTRY moved to the base-EXCLUDED, auto-discovered
+# package fresh_slotlab/round_win_rules/ (mirrors features/ + st_extract/).
+# They remain importable from this module via the lazy __getattr__ at the bottom
+# of the file (backward compat), but are no longer defined here — so editing or
+# adding a rule type no longer flips base_hash. See the module docstring.
+# ---------------------------------------------------------------------------
 
 
 def extract_round_win(
@@ -721,6 +339,17 @@ def load_rules_for_machine(
     """
     if not config or not isinstance(config, dict):
         return []
+    # Ensure the base-excluded rule-type plugins are discovered before
+    # consulting RULE_REGISTRY (idempotent — no-op once run). Lazy import keeps
+    # round_win.py free of any module-load dependency on round_win_rules, which
+    # would create an import cycle (round_win_rules modules import RoundWinRule
+    # from here). Dual-path covers script-mode (cwd=fresh_slotlab/) per
+    # memory/feedback_subprocess_import_suicide_and_module_globals.md.
+    try:
+        from fresh_slotlab.round_win_rules import RULE_REGISTRY, discover_rules
+    except ImportError:
+        from round_win_rules import RULE_REGISTRY, discover_rules  # type: ignore[no-redef]
+    discover_rules()
     rules: list[RoundWinRule] = []
     for rule_id, spec in (config.get("rules") or {}).items():
         if not isinstance(spec, dict):
@@ -738,3 +367,39 @@ def load_rules_for_machine(
         except (TypeError, ValueError):
             continue
     return rules
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat lazy re-exports (PEP 562).
+#
+# The 4 built-in rule classes and RULE_REGISTRY moved to the base-excluded
+# round_win_rules/ package. Callers that still do
+# ``from fresh_slotlab.round_win import SettlementWinAmountRule`` (or import
+# RULE_REGISTRY) keep working: __getattr__ resolves the name on demand, AFTER
+# this module is fully loaded, so there is NO module-load import of the package
+# and therefore NO import cycle. Every class resolves through the single
+# canonical path (the discovered RULE_REGISTRY), so identity assertions like
+# ``RULE_REGISTRY["settlement_winamount"] is SettlementWinAmountRule`` hold.
+# ---------------------------------------------------------------------------
+
+_LAZY_RULE_EXPORTS: dict[str, str] = {
+    "SettlementWinAmountRule": "settlement_winamount",
+    "SynthesizePayIdRule": "synthesize_pay_id",
+    "WinResidualRule": "win_residual",
+    "BCMCycleAnchorRule": "bcm_cycle_anchor",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name == "RULE_REGISTRY" or name in _LAZY_RULE_EXPORTS:
+        try:
+            from fresh_slotlab import round_win_rules as _pkg
+        except ImportError:
+            import round_win_rules as _pkg  # type: ignore[no-redef]
+        _pkg.discover_rules()
+        if name == "RULE_REGISTRY":
+            return _pkg.RULE_REGISTRY
+        cls = _pkg.RULE_REGISTRY.get(_LAZY_RULE_EXPORTS[name])
+        if cls is not None:
+            return cls
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

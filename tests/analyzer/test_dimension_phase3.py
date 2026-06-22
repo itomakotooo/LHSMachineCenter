@@ -1473,22 +1473,26 @@ class TestBaseHashUnchangedPhase3:
     Expected base_hash: c5d2199142c3 (from Phase 2 and unchanged through Phase 3).
     """
 
-    def test_base_hash_is_c5d2199142c3(self):
+    def test_base_hash_is_current_baseline(self):
         """compute_base_analyzer_version() must return the current baseline
-        bba689d50f03 (re-baselined 2026-06-19 by the DELIBERATE addition of
-        WinResidualRule to fresh_slotlab/round_win.py — a closure file — for
-        collect-coin residual attribution; was d9fa4625b956 derive-from-data
-        routing).
+        ddde50975d25 (re-baselined 2026-06-22 by the DELIBERATE pluggable
+        round_win rule-engine refactor: the 4 rule TYPE classes + RULE_REGISTRY
+        moved out of fresh_slotlab/round_win.py into the base-EXCLUDED
+        fresh_slotlab/round_win_rules/ package; round_win_rules/__init__.py added
+        to _CLOSURE_FILES. Last rule-type base_hash flip; prior bba689d50f03
+        (SettlementWinAmountRule.settlement_label_format); was d9fa4625b956
+        derive-from-data routing).
 
         If this fails, a closure file (_CLOSURE_FILES in versioning.py) was
         accidentally modified (or a new deliberate closure change needs this
         baseline updated) — freespin_progression.py, freespin_dynamics.py,
-        upstream_feature_breakdown.py are all base-excluded.
+        upstream_feature_breakdown.py and the round_win_rules/*.py rule types
+        are all base-excluded.
         """
         from fresh_slotlab.analyzer.versioning import compute_base_analyzer_version
         bh = compute_base_analyzer_version()
-        assert bh == "bba689d50f03", (
-            f"base_hash changed from the bba689d50f03 baseline to {bh!r}. "
+        assert bh == "ddde50975d25", (
+            f"base_hash changed from the ddde50975d25 baseline to {bh!r}. "
             f"A base_hash change means a closure file was accidentally modified "
             f"(or a deliberate closure change needs this updated)."
         )

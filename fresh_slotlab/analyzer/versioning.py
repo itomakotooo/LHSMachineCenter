@@ -157,6 +157,12 @@ _CLOSURE_FILES: tuple[str, ...] = (
     "fresh_slotlab/rawdata_index.py",
     "fresh_slotlab/round_classification.py",
     "fresh_slotlab/round_win.py",
+    # round_win_rules/ framework file (discovery + registry + per-type hashing)
+    # is in the closure, mirroring features/__init__.py and st_extract/__init__.py.
+    # The rule-TYPE modules (settlement_winamount.py etc.) are base-EXCLUDED —
+    # editing or adding a rule type re-flags only machines that declare it (via
+    # the rw:<type_str> effective_version component), never the whole fleet.
+    "fresh_slotlab/round_win_rules/__init__.py",
     "fresh_slotlab/sampler.py",
     "fresh_slotlab/trigger_sessions.py",
 )
@@ -165,6 +171,85 @@ _CLOSURE_FILES: tuple[str, ...] = (
 # (i.e., fresh_slotlab/analyzer/ -> fresh_slotlab/ -> repo_root/).
 # Pure path arithmetic, no I/O at import time.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+# ---------------------------------------------------------------------------
+# round_win rule-type membership (for "rw:<type_str>" effective_version folding)
+# ---------------------------------------------------------------------------
+# Module-level cache for configs/machine_round_win_rules.json. The effective-
+# version path is called per (machine, mode) across the whole fleet, so the
+# config is read once and reused. Tests that mutate the file on disk should
+# reset this to None (or pass round_win_rules_config explicitly to bypass it).
+_RW_RULES_CONFIG_CACHE: Optional[dict[str, Any]] = None
+
+
+def _reset_rw_cache() -> None:
+    """Clear the round_win rules-config cache.
+
+    Test-only helper. The cache (loaded once, process-lifetime) is correct for
+    production where the config file is immutable during a run; a test that
+    MUTATES configs/machine_round_win_rules.json on disk between calls must call
+    this (or pass ``round_win_rules_config=`` to bypass the cache entirely),
+    otherwise the stale parse short-circuits subsequent reads. The ``{}``
+    sentinel (file absent) is a valid cached value, so a plain ``is not None``
+    guard would not re-read after the file appears — hence this explicit reset.
+    """
+    global _RW_RULES_CONFIG_CACHE
+    _RW_RULES_CONFIG_CACHE = None
+
+
+def _load_round_win_rules_config(repo_root: Optional[Path] = None) -> dict[str, Any]:
+    """Load + cache configs/machine_round_win_rules.json (or {} if absent).
+
+    Cached for the process lifetime (the EV path is called per (machine, mode)
+    across the fleet). Tests that mutate the file on disk must call
+    :func:`_reset_rw_cache` or pass ``round_win_rules_config=`` to bypass it.
+    """
+    global _RW_RULES_CONFIG_CACHE
+    if _RW_RULES_CONFIG_CACHE is not None:
+        return _RW_RULES_CONFIG_CACHE
+    import json
+    root = repo_root if repo_root is not None else _REPO_ROOT
+    path = root / "configs" / "machine_round_win_rules.json"
+    if not path.exists():
+        _RW_RULES_CONFIG_CACHE = {}
+        return _RW_RULES_CONFIG_CACHE
+    with open(path, encoding="utf-8") as fh:
+        _RW_RULES_CONFIG_CACHE = json.load(fh)
+    return _RW_RULES_CONFIG_CACHE
+
+
+def _used_round_win_types(
+    machine_id: str,
+    *,
+    repo_root: Optional[Path] = None,
+    config: Optional[dict[str, Any]] = None,
+) -> set[str]:
+    """Return the set of round_win rule TYPE strings this machine uses.
+
+    A machine "uses" a rule type if any entry in machine_round_win_rules.json
+    has the machine_id — OR its base id (for variants like
+    ``"M15$TopDollarSelector$1$"`` → ``"M15"``) — in its ``applies_to`` list.
+
+    The base-id fallback mirrors report_engine's variant rule-loading fallback
+    (a variant with no own entry inherits the base machine's rules). Folding the
+    rule hash for such variants keeps their effective_version honest — without
+    it a variant whose rules come via the base fallback would carry a stale EV
+    that never re-flags when the rule changes (critic EC-1).
+    """
+    cfg = config if config is not None else _load_round_win_rules_config(repo_root)
+    rules = (cfg or {}).get("rules") or {}
+    base_id = str(machine_id).split("$")[0]
+    used: set[str] = set()
+    for spec in rules.values():
+        if not isinstance(spec, dict):
+            continue
+        applies_to = spec.get("applies_to") or []
+        if machine_id in applies_to or base_id in applies_to:
+            t = spec.get("type")
+            if t:
+                used.add(str(t))
+    return used
 
 
 def compute_base_analyzer_version(
@@ -265,6 +350,7 @@ def compute_effective_version_for_machine(
     registry: Optional[Any] = None,
     closure_files: Optional[tuple[str, ...]] = None,
     repo_root: Optional[Path] = None,
+    round_win_rules_config: Optional[dict[str, Any]] = None,
 ) -> str:
     """Convenience orchestrator — full pipeline for one (machine, mode).
 
@@ -398,6 +484,48 @@ def compute_effective_version_for_machine(
                 feature_hashes[_pseudo_id] = _ext_hashes.get(_ext.EXTRACTOR_ID, "")
             if _pseudo_id not in machine_features:
                 machine_features = list(machine_features) + [_pseudo_id]
+
+    # Fold round_win rule-type pseudo-entries ("rw:<type_str>" -> hash) for
+    # machines whose machine_round_win_rules.json applies_to includes this
+    # machine (or its base id, for variants). Mirrors the xt: extractor folding
+    # above and the features/ plugin model: editing OR adding a rule type
+    # re-flags only its declaring machines, never the fleet. Machines with no
+    # rule entry get no pseudo-entries → unchanged effective_version.
+    try:
+        from fresh_slotlab.round_win_rules import (
+            RULE_REGISTRY as _RULE_REGISTRY,
+            discover_rules as _discover_rules,
+            rule_type_hash as _rule_type_hash,
+        )
+    except ImportError:
+        from round_win_rules import (  # type: ignore[no-redef]
+            RULE_REGISTRY as _RULE_REGISTRY,
+            discover_rules as _discover_rules,
+            rule_type_hash as _rule_type_hash,
+        )
+    _discover_rules()
+    _used_rw_types = _used_round_win_types(
+        machine_id, repo_root=repo_root, config=round_win_rules_config
+    )
+    for _rw_type in sorted(_used_rw_types):
+        if _rw_type not in _RULE_REGISTRY:
+            # Config references a rule type with no registering module. This is a
+            # deploy/config bug (e.g. the JSON entry was added before the
+            # round_win_rules/<type>.py file). Fail LOUD with an actionable message
+            # rather than a bare KeyError or a silent skip (the machine would then
+            # be analyzed with the wrong rule list) — feedback_no_silent_swallow.md.
+            raise KeyError(
+                f"machine {machine_id!r} declares round_win rule type {_rw_type!r} "
+                f"(configs/machine_round_win_rules.json) but no round_win_rules/*.py "
+                f"module registers it after discover_rules(). Add "
+                f"fresh_slotlab/round_win_rules/{_rw_type}.py (calling register_rule), "
+                f"or remove the config entry."
+            )
+        _pseudo_id = f"rw:{_rw_type}"
+        if _pseudo_id not in feature_hashes:
+            feature_hashes[_pseudo_id] = _rule_type_hash(_rw_type)
+        if _pseudo_id not in machine_features:
+            machine_features = list(machine_features) + [_pseudo_id]
 
     return compute_effective_analyzer_version(
         base_hash=base_hash,

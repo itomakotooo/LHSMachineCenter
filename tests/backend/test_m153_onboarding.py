@@ -593,7 +593,7 @@ class TestCrossMachineNonLeak:
 # c5d2199142c3 by the already-committed 58a28fd, NOT by M153). Asserting the live
 # value keeps this test honest (it goes RED iff a *closure* file changes), while
 # test_m153_does_not_flip_base_hash locks the actual M153-onboard invariant.
-_LIVE_BASE_HASH = "bba689d50f03"  # re-baselined 2026-06-20: SettlementWinAmountRule.settlement_label_format param (round_win.py closure) for M206 respin-triggered TopDollar; prior 8dde9c4df7c5 = WinResidualRule
+_LIVE_BASE_HASH = "ddde50975d25"  # re-baselined 2026-06-22: pluggable round_win rule-engine refactor (4 rule classes + RULE_REGISTRY → base-EXCLUDED round_win_rules/; __init__.py added to closure) — LAST rule-type flip; prior bba689d50f03 = settlement_label_format param
 _BRIEF_BASE_HASH = "c5d2199142c3"  # superseded by 58a28fd (M63/M104), pre-M153
 
 
