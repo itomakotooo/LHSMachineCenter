@@ -7940,9 +7940,15 @@ def create_app(
                 stale_rawdata += 1
             if analyzer_is_stale:
                 stale_analyzer += 1
-            # Fixable = analyzer stale AND rawdata fresh (regen from current cache).
-            # No usable rawdata → needs_rawdata (resample first), not fixable.
-            if analyzer_is_stale and not rawdata_is_stale:
+                # Categorize EVERY analyzer-stale cell so none is left without an
+                # action (the gap: a cell that's analyzer-stale AND rawdata-stale
+                # used to be counted "过期" but added to NEITHER fixable nor
+                # needs_rawdata → no 重生 button AND no 需先采样 hint, stuck). The
+                # LIVE chunk check (not the run's historical md5) is authoritative:
+                #   * usable current chunks on disk → fixable (重生 from cache)
+                #   * none → needs_rawdata (must resample first)
+                # This also catches the reverse: a cell whose REPORTS are old-md5
+                # but which has freshly-sampled current chunks IS fixable.
                 try:
                     rs = check_rawdata_status(
                         machine, mode, rawdata_root=rd_root, machines_config=mc,
