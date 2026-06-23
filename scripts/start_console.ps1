@@ -40,6 +40,13 @@ function Invoke-PipTimed {
 
 function Invoke-ConsoleUpdate {
   param([string]$Root, [string]$ResultPath, [switch]$Simulate)
+  # CRITICAL: native commands (git) write progress to STDERR. With the script-
+  # level $ErrorActionPreference="Stop" + `2>&1`, that stderr is wrapped as a
+  # NativeCommandError and THROWS, killing the launcher mid-update -> console
+  # left DOWN with nothing to relaunch it (the 2026-06-23 brick). Force Continue
+  # for THIS function (function-scoped, restored on return) so stderr is captured
+  # as output, not fatal.
+  $ErrorActionPreference = "Continue"
   Write-Host ""
   Write-Host "=== Update requested -- git pull --ff-only + restart ==="
   Push-Location $Root
@@ -52,7 +59,9 @@ function Invoke-ConsoleUpdate {
   $pullOut = ""
   $pullOk = $false
   if ($Simulate) {
-    $pullOut = "(simulate) git pull skipped"
+    # Exercise the SAME native-stderr + 2>&1 capture the real pull uses, so the
+    # DryRun test catches an ErrorActionPreference regression (the brick bug).
+    $pullOut = (& cmd /c "echo (simulate) pull progress 1>&2 & exit /b 0" 2>&1 | Out-String)
     $pullOk = $true
   } else {
     # GIT_TERMINAL_PROMPT=0 -> a credential-less pull FAILS FAST instead of
@@ -338,7 +347,13 @@ while ($true) {
     try { $sentAgeSec = ((Get-Date) - (Get-Item $updateSentinel).LastWriteTime).TotalSeconds } catch {}
     Remove-Item $updateSentinel -Force -ErrorAction SilentlyContinue
     if ($sentAgeSec -le 120) {
-      Invoke-ConsoleUpdate -Root $root -ResultPath $updateResult
+      # The update handler must NEVER kill the launcher (else the console is left
+      # DOWN with nothing to relaunch it). Swallow any throw and relaunch anyway.
+      try {
+        Invoke-ConsoleUpdate -Root $root -ResultPath $updateResult
+      } catch {
+        Write-Host "Update handler threw -- relaunching on existing code: $_"
+      }
       $restarts = 0        # an update is not a crash -- reset the failure budget
       continue
     }
