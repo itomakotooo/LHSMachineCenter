@@ -3048,38 +3048,53 @@ class AppCacheState:
 _MODULE_CACHE_STATE = AppCacheState()
 
 
-def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
+def _machines_summary_fingerprint(
+    reports_root: Path, machines_config: Path | None = None
+) -> tuple[int, int, int, int]:
     """Lightweight cache key: (sum of version-dir mtime_ns, version-dir count)
-    across all (machine, mode) pairs. Stat-only, no file reads. Changes when
-    a new version is added (import / generate-report both create a new
-    ``versions/<rv_*>`` dir) or an existing version dir is touched. The
-    count component catches additions where the new dir's mtime_ns happens
-    to sum-cancel (theoretical, but cheap to guard).
+    across all (machine, mode) pairs, PLUS the roster (machines.json) stat.
+    Stat-only, no file reads. Changes when a new version is added (import /
+    generate-report both create a new ``versions/<rv_*>`` dir), an existing
+    version dir is touched, OR the roster changes. The count component catches
+    additions where the new dir's mtime_ns happens to sum-cancel (theoretical,
+    but cheap to guard).
+
+    The roster component mirrors ``_rawdata_overview_fingerprint``: ``md5_status``
+    and ``has_current_md5_report`` are computed against the roster md5 at build
+    time, so a server-config drift must invalidate this cache even when no report
+    changed — otherwise the summary keeps reporting a stale match/outdated verdict.
 
     We scan version dirs rather than ``latest.json`` mtimes because
     ``/api/reports/import`` doesn't rewrite latest.json — it only copies
     the version tree — and the cache would otherwise miss imported
     reports until a subsequent run touched latest.json."""
-    if not reports_root.is_dir():
-        return (0, 0)
     total = 0
     count = 0
-    for machine_dir in reports_root.iterdir():
-        if not machine_dir.is_dir():
-            continue
-        for mode_dir in machine_dir.iterdir():
-            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+    if reports_root.is_dir():
+        for machine_dir in reports_root.iterdir():
+            if not machine_dir.is_dir():
                 continue
-            versions_dir = mode_dir / "versions"
-            if not versions_dir.is_dir():
-                continue
-            for ver_dir in versions_dir.iterdir():
-                try:
-                    total += ver_dir.stat().st_mtime_ns
-                    count += 1
-                except OSError:
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
                     continue
-    return (total, count)
+                versions_dir = mode_dir / "versions"
+                if not versions_dir.is_dir():
+                    continue
+                for ver_dir in versions_dir.iterdir():
+                    try:
+                        total += ver_dir.stat().st_mtime_ns
+                        count += 1
+                    except OSError:
+                        continue
+    roster_mtime = 0
+    roster_size = 0
+    if machines_config is not None:
+        try:
+            st = machines_config.stat()
+            roster_mtime, roster_size = st.st_mtime_ns, st.st_size
+        except OSError:
+            pass
+    return (total, count, roster_mtime, roster_size)
 
 
 # ── Rawdata overview cache ────────────────────────────────────────
@@ -3092,25 +3107,44 @@ def _machines_summary_fingerprint(reports_root: Path) -> tuple[int, int]:
 # per P1-C1 (feedback_subprocess_import_suicide_and_module_globals.md).
 
 
-def _rawdata_overview_fingerprint(rawdata_root: Path) -> tuple[int, int]:
-    """Aggregate mtime_ns + mode_dir count across all (machine, mode).
-    Changes when chunks are added/deleted/replaced."""
-    if not rawdata_root.is_dir():
-        return (0, 0)
+def _rawdata_overview_fingerprint(
+    rawdata_root: Path, machines_config: Path | None = None
+) -> tuple[int, int, int, int]:
+    """Aggregate mtime_ns + mode_dir count across all (machine, mode), PLUS the
+    roster (machines.json) stat. Changes when chunks are added/deleted/replaced
+    OR when the roster changes.
+
+    The roster component is essential: kept/deletable/historical classification
+    is computed against the current roster md5 (``_classify_chunks``), so a
+    server-config drift (roster md5 moves) must invalidate this cache even when
+    no rawdata file changed — otherwise the overview keeps classifying a
+    now-historical chunk as ``kept``. That stale "kept" is exactly what made the
+    freshness chip read 待生成 for M182 when its only chunk was historical
+    (2026-06-23 incident: report md5 == chunk md5 == 3479a0e4, roster moved to
+    95571e93; fresh classify → historical → 需重新采样)."""
     total = 0
     count = 0
-    for machine_dir in rawdata_root.iterdir():
-        if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
-            continue
-        for mode_dir in machine_dir.iterdir():
-            if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+    if rawdata_root.is_dir():
+        for machine_dir in rawdata_root.iterdir():
+            if not machine_dir.is_dir() or machine_dir.name.startswith("_"):
                 continue
-            try:
-                total += mode_dir.stat().st_mtime_ns
-                count += 1
-            except OSError:
-                continue
-    return (total, count)
+            for mode_dir in machine_dir.iterdir():
+                if not mode_dir.is_dir() or not mode_dir.name.startswith("mode_"):
+                    continue
+                try:
+                    total += mode_dir.stat().st_mtime_ns
+                    count += 1
+                except OSError:
+                    continue
+    roster_mtime = 0
+    roster_size = 0
+    if machines_config is not None:
+        try:
+            st = machines_config.stat()
+            roster_mtime, roster_size = st.st_mtime_ns, st.st_size
+        except OSError:
+            pass
+    return (total, count, roster_mtime, roster_size)
 
 
 def _build_rawdata_overview(
@@ -3125,7 +3159,7 @@ def _build_rawdata_overview(
     _cs is the per-app-instance AppCacheState (P1-C1)."""
     cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     cache_key = str(rawdata_root)
-    fp = _rawdata_overview_fingerprint(rawdata_root)
+    fp = _rawdata_overview_fingerprint(rawdata_root, machines_config)
     entry = cs.rawdata_overview_cache.get(cache_key)
     if entry and entry.get("fp") == fp and entry.get("retention") == retention_spins:
         return entry["result"]
@@ -3802,7 +3836,7 @@ def _build_machines_summary(
 
     cs = _cs if _cs is not None else _MODULE_CACHE_STATE
     cache_key = str(reports_root)
-    fingerprint = _machines_summary_fingerprint(reports_root)
+    fingerprint = _machines_summary_fingerprint(reports_root, MACHINES_CONFIG)
     entry = cs.machines_summary_cache.get(cache_key)
     if entry is not None and entry.get("fingerprint") == fingerprint:
         return entry["result"]
@@ -3842,6 +3876,14 @@ def _build_machines_summary(
 
             best: dict[str, Any] | None = None
             best_ci = float("inf")
+            # Roster md5 for this (machine, mode) — looked up ONCE here so it can
+            # serve both the md5_status verdict below AND a robust
+            # "∃ a current-md5 report" flag. The best-CI selection can pick an
+            # older higher-spin (tighter-CI) report, masking a freshly-sampled
+            # current-version report; the chip's "当前" answer must not depend on
+            # which version happens to win the CI tiebreak.
+            _up_cfg, _up_code = _get_machine_md5(machine, mode=mode)
+            _has_current_report = False
 
             for ver_dir in versions_dir.iterdir():
                 if not ver_dir.is_dir():
@@ -3860,6 +3902,13 @@ def _build_machines_summary(
                 vol = pi.get("volatility", {})
                 ci_hw = sampling.get("achieved_halfwidth_pp")
                 ci_val = float(ci_hw) if ci_hw is not None else float("inf")
+
+                # Track current-version presence across ALL versions (not just the
+                # best-CI one) so the chip can answer "有没有当前版报表" reliably.
+                if (_up_cfg and _up_code
+                        and str(s.get("config_md5", "")) == _up_cfg
+                        and str(s.get("code_md5", "")) == _up_code):
+                    _has_current_report = True
 
                 if best is None or ci_val <= best_ci:
                     best_ci = ci_val
@@ -3898,8 +3947,9 @@ def _build_machines_summary(
                     }
 
             if best is not None:
-                # Compute MD5 status vs current machines.json (upstream).
-                up_cfg, up_code = _get_machine_md5(machine, mode=mode)
+                # MD5 status vs current machines.json (upstream) — reuse the
+                # roster md5 looked up before the version loop (no recompute).
+                up_cfg, up_code = _up_cfg, _up_code
                 r_cfg = best.get("config_md5", "")
                 r_code = best.get("code_md5", "")
                 if not r_cfg and not r_code:
@@ -3910,6 +3960,9 @@ def _build_machines_summary(
                     best["md5_status"] = "match"
                 else:
                     best["md5_status"] = "outdated"
+                # Robust "∃ a current-server-version report?" — drives the catalog
+                # freshness chip's 当前 verdict, independent of the best-CI tiebreak.
+                best["has_current_md5_report"] = _has_current_report
 
                 result[machine][str(mode)] = best
                 zwr = best.get("zero_win_rate", 0)

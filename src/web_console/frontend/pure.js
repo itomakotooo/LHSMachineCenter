@@ -2461,7 +2461,11 @@ function formatRunMeter(run) {
 const FRESHNESS_LABEL = { current: "当前", ready_regen: "数据就绪待生成", resample: "需重新采样", none: "无报表/无数据" };
 function machineFreshness(modeDataMap, rawdataEntry) {
   const modes = (modeDataMap && typeof modeDataMap === "object") ? Object.values(modeDataMap) : [];
-  const hasCurrentReport = modes.some((d) => d && d.md5_status === "match");
+  // Prefer the backend's robust "∃ a current-version report" flag (set per mode
+  // by the summary builder, scanning ALL versions). Fall back to the best-report
+  // md5_status for summaries built before that field existed. md5_status reflects
+  // only the lowest-CI "best" report, which can mask a freshly-sampled current one.
+  const hasCurrentReport = modes.some((d) => d && (d.has_current_md5_report === true || d.md5_status === "match"));
   const hasAnyReport = modes.length > 0;
   const kept = Number((rawdataEntry && rawdataEntry.kept_chunks) || 0);
   const hist = Number((rawdataEntry && rawdataEntry.historical_chunks) || 0);

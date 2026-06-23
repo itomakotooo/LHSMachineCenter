@@ -1495,6 +1495,24 @@ test("machineFreshness: 4-state — current / ready_regen / resample / none", ()
   assert.equal(PURE.machineFreshness({ "1": { md5_status: "match" } }, null).label, "当前");
 });
 
+test("machineFreshness: has_current_md5_report overrides best-report md5_status", () => {
+  // A current-version report exists but the lowest-CI "best" report is historical
+  // → md5_status="outdated" but has_current_md5_report=true → still 当前.
+  assert.equal(
+    PURE.machineFreshness({ "1": { md5_status: "outdated", has_current_md5_report: true } }, { kept_chunks: 5 }).state,
+    "current");
+  // Flag explicitly false + current rawdata → ready_regen (current data, no current report).
+  assert.equal(
+    PURE.machineFreshness({ "1": { md5_status: "outdated", has_current_md5_report: false } }, { kept_chunks: 5 }).state,
+    "ready_regen");
+  // Back-compat: no flag at all → fall back to md5_status.
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "match" } }, null).state, "current");
+  // M182 reproduction: only-historical report + only-historical chunk → 需重新采样.
+  assert.equal(
+    PURE.machineFreshness({ "1": { md5_status: "outdated", has_current_md5_report: false } }, { kept_chunks: 0, historical_chunks: 1 }).state,
+    "resample");
+});
+
 test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {
   // 2026-04-21 regression guard: a 165-chunk resume-from-cache replay
   // used to appear stuck (no events for ~80s). The analyzer now emits
