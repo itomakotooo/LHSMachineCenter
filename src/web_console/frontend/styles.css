@@ -95,6 +95,78 @@ body {
   font-size: 13px;
 }
 
+/* One-click update/restart: version chip + button in the topbar. Hidden until
+   /api/system/version resolves (#systemUpdate.hidden removed in JS). */
+.system-update {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.version-chip {
+  font-size: 11px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: var(--muted);
+  background: var(--panel-2, rgba(127, 127, 127, 0.12));
+  padding: 2px 8px;
+  border-radius: 8px;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+.ghost-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  background: transparent;
+  border: 1px solid var(--accent, #2563eb);
+  border-radius: 8px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.ghost-btn:hover:not(:disabled) { background: rgba(37, 99, 235, 0.1); }
+.ghost-btn:disabled { color: var(--muted); border-color: var(--muted); cursor: not-allowed; opacity: 0.6; }
+
+/* Restarting overlay — covers the page so the operator doesn't interact with a
+   console that's about to die. */
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+.update-overlay.hidden { display: none; }
+.update-overlay-box {
+  background: var(--panel, #fff);
+  border-radius: 16px;
+  padding: 28px 36px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  max-width: 460px;
+}
+.update-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 16px;
+  border: 4px solid rgba(127, 127, 127, 0.25);
+  border-top-color: var(--accent, #2563eb);
+  border-radius: 50%;
+  animation: update-spin 0.9s linear infinite;
+}
+@keyframes update-spin { to { transform: rotate(360deg); } }
+.update-overlay-text { font-weight: 700; font-size: 15px; }
+.update-overlay-sub {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
 .global-warning {
   margin: 10px 14px 0;
   padding: 10px 12px;

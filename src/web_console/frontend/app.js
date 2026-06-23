@@ -9152,6 +9152,107 @@ async function refreshInterpretation() {
   byId("interpretationText").textContent = r.content || fmt("noInterpret");
 }
 
+// ── One-click update/restart (topbar) ──────────────────────────────────────
+// Fetch build identity + supervised flag; render the version chip + gate the
+// button. Surfaces the launcher's last pull result into the unified log once.
+async function refreshSystemVersion() {
+  let info = null;
+  try { info = await apiGet("/api/system/version"); } catch (_) { info = null; }
+  state.systemVersion = info;
+  if (info && info.app_started_at) state.appStartedAt = info.app_started_at;
+  const wrap = byId("systemUpdate");
+  const chip = byId("versionChip");
+  const btn = byId("updateRestartBtn");
+  if (!wrap || !chip || !btn) return;
+  if (!info) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  const c = PURE.formatVersionChip(info);
+  chip.textContent = c.text;
+  chip.title = c.title;
+  // Gate the button on supervised launch — a manually-started `uvicorn` would
+  // self-exit and never come back, stranding the console down.
+  btn.disabled = !info.supervised;
+  btn.title = info.supervised
+    ? "git pull 最新代码并重启 console"
+    : "需用 start.bat 启动（受管模式）才能自动更新重启";
+  // Surface the launcher's last pull result ONCE (cleared so it doesn't re-log
+  // on every bootstrap / periodic refresh).
+  if (info.last_update && !state._lastUpdateShown) {
+    state._lastUpdateShown = true;
+    // Only surface if recent — else an hours-old result would re-log after an
+    // UNRELATED crash-restart + page reload, reading as a fresh update. Unknown
+    // ts → show (don't suppress a legitimate one).
+    const ts = Date.parse(info.last_update.ts || "");
+    const recent = Number.isNaN(ts) || (Date.now() - ts) < 15 * 60 * 1000;
+    if (recent) {
+      const r = PURE.formatUpdateResult(info.last_update);
+      if (r) pushClientEvent("update_result", { level: r.level, text: r.text });
+    }
+  }
+}
+
+async function doUpdateRestart() {
+  if (state._updateInFlight) return;  // guard against double-click during the window
+  const info = state.systemVersion || {};
+  if (!info.supervised) {
+    alert("console 未在受管启动器（start.bat）下运行，无法自动更新重启。");
+    return;
+  }
+  let force = false;
+  if (info.busy) {
+    if (!confirm(`有 ${info.running_runs_count || 0} 个运行中操作（采样/生成），更新重启会中断它们。仍要继续？`)) return;
+    force = true;
+  }
+  if (!confirm(`更新并重启 console？\n当前 ${info.commit || "?"} → git pull 最新并重启（约 10–40 秒，期间页面自动重连刷新）。`)) return;
+  state._updateInFlight = true;
+  const btn = byId("updateRestartBtn");
+  if (btn) btn.disabled = true;
+  const before = state.appStartedAt || info.app_started_at || "";
+  const overlay = byId("updateOverlay");
+  const sub = byId("updateOverlaySub");
+  if (overlay) overlay.classList.remove("hidden");
+  if (sub) sub.textContent = `当前 ${info.commit || "?"} · 正在 git pull 并重启…`;
+  pushClientEvent("update_start", { text: `更新并重启 · 当前 ${info.commit || "?"}` });
+  try {
+    await apiPost("/api/system/update-restart" + (force ? "?force=true" : ""), {});
+  } catch (err) {
+    state._updateInFlight = false;
+    if (btn) btn.disabled = false;
+    if (overlay) overlay.classList.add("hidden");
+    const msg = (err && err.message) ? err.message : String(err);
+    pushClientEvent("update_result", { level: "error", text: "更新请求失败：" + msg });
+    alert("无法更新重启：" + msg);
+    return;
+  }
+  _pollForRestart(before, 0);
+}
+
+// Poll /api/health until a NEW process is up (app_started_at changed), then
+// reload. While the server is down the fetch just fails and we retry.
+function _pollForRestart(beforeStartedAt, attempt) {
+  const MAX = 80;  // ~80 × 1.5s ≈ 2 min
+  const sub = byId("updateOverlaySub");
+  if (attempt > MAX) {
+    if (sub) sub.textContent = "重启超时（>2 分钟）。请检查服务器 console 窗口。";
+    const rb = byId("updateReloadBtn");
+    if (rb) rb.classList.remove("hidden");  // give the operator a manual-recover affordance
+    const sp = document.querySelector(".update-spinner");
+    if (sp) sp.style.display = "none";
+    return;
+  }
+  setTimeout(async () => {
+    let h = null;
+    try { h = await apiGet("/api/health"); } catch (_) { h = null; }
+    if (PURE.updateRestartDone(beforeStartedAt, h)) {
+      if (sub) sub.textContent = "已重启，正在重新加载…";
+      setTimeout(() => location.reload(), 600);
+      return;
+    }
+    if (sub && attempt > 1) sub.textContent = `重启中…（${Math.round(attempt * 1.5)}s）`;
+    _pollForRestart(beforeStartedAt, attempt + 1);
+  }, 1500);
+}
+
 async function loadBootstrap() {
   const [h, m, models, versions, reviewState] = await Promise.all([
     apiGet("/api/health"),
@@ -9210,6 +9311,7 @@ async function loadBootstrap() {
   renderDetailPane();  // initialize right-pane container visibility
   refreshStaleBanner();  // don't await — non-blocking for bootstrap
   refreshRawdataOverview();  // populate the rawdata banner in topbar (async)
+  refreshSystemVersion();    // version chip + 更新并重启 button (async)
   _initBatchGenerateCancelBtn();  // wire the stop button one-shot
   _restoreSamplingPrefs();  // hydrate sampleMode/sampleCi from localStorage
   updateSampleHint();
@@ -9669,6 +9771,10 @@ function bindEvents() {
   byId("interpretBtn")?.addEventListener("click", () =>
     withAction("interpret", generateInterpretation).catch((e) => alert(String(e.message || e)))
   );
+  byId("updateRestartBtn")?.addEventListener("click", () =>
+    doUpdateRestart().catch((e) => alert(String(e.message || e)))
+  );
+  byId("updateReloadBtn")?.addEventListener("click", () => location.reload());
   // Cache refresh/cleanup buttons removed 2026-04-19 — the rawdata
   // banner's 一键清理 owns cleanup; refresh is no longer needed (the
   // banner reads /api/rawdata/overview which is mtime-invalidated).

@@ -267,6 +267,35 @@ The following gaps are known as of P4 (2026-05-17). They are tracked for future 
 
 ---
 
+## 7b. One-click update/restart (「更新并重启」 button)
+
+The topbar has a **⟳ 更新并重启** button (`POST /api/system/update-restart`) so the
+console can be updated without an SSH/RDP session. On click it writes a sentinel
+(`state/console/update_request.json`, with the requester's `client_ip`) and self-exits;
+`start_console.ps1`'s restart loop then runs `git pull --ff-only` (+ `pip install` iff
+`requirements.txt` changed) and relaunches uvicorn on the new code. The button is gated on
+`SLOT_CONSOLE_SUPERVISED=1` (set only by the launcher) and refuses while a sample/generate
+run is active (unless forced).
+
+**Trust model — read before relying on this.** The console has **no auth** (internal LAN,
+single host — by design). This button therefore makes **push access to
+`origin/<deployed-branch>` equivalent to code execution on the server**: a pull that changes
+`requirements.txt` runs `pip install` (arbitrary package code) as the console user, and any
+LAN client can click the button. Acceptable **only** because the repo and LAN are trusted.
+Consequences:
+
+- **Lock down `origin/<branch>` push access** (branch protection / limited collaborators);
+  server code-exec now depends on it.
+- The requester's IP is recorded in `update_request.json` for after-the-fact audit. It is
+  **not** an access control.
+- Launcher safety nets so a bad update can't strand the console down: `git pull` is
+  non-interactive + transfer-timeout-bounded; `pip install` is `--no-input` and killed after
+  240 s; if the new code's core deps don't import, the launcher **rolls back** to the pre-pull
+  commit (`git reset --hard`) and relaunches the old code. A `git pull` failure relaunches on
+  the existing code. The 5-restart crash budget still backstops a crash loop.
+
+---
+
 ## 8. Uninstall
 
 ```powershell

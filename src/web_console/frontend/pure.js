@@ -2316,6 +2316,7 @@ const CLIENT_KIND_OP = {
   md5_refresh_start: "md5", md5_refresh_done: "md5", md5_refresh_failed: "md5",
   generate_report_start: "generate", generate_report_done: "generate",
   generate_report_failed: "generate", generate_report_timeout: "generate",
+  update_start: "update", update_result: "update",
 };
 
 function buildClientEvent(kind, data, nowIso) {
@@ -2377,6 +2378,10 @@ function buildClientEvent(kind, data, nowIso) {
     case "generate_report_timeout":
       return { ...base, level: "warn",
         text: `生成轮询超时 · last=${(data && data.last_status) || "unknown"}（后台可能仍在跑）` };
+    case "update_start":
+      return { ...base, level: "info", text: (data && data.text) || "更新并重启 console…" };
+    case "update_result":
+      return { ...base, level: (data && data.level) || "info", text: (data && data.text) || "" };
     default:
       return { ...base, level: "info", text: String(kind) };
   }
@@ -2417,7 +2422,7 @@ function normalizeBackendEvent(ev) {
 
 // One label per op lane for the source chip (the single row format). Keeps the
 // chip text consistent whether the entry came from the client or the backend.
-const OP_LABEL = { sample: "采样", generate: "生成", md5: "md5", delete: "删除", autotune: "调参", ui: "ui", "": "" };
+const OP_LABEL = { sample: "采样", generate: "生成", md5: "md5", delete: "删除", autotune: "调参", update: "更新", ui: "ui", "": "" };
 function logOpLabel(op) { return OP_LABEL[op] != null ? OP_LABEL[op] : String(op || ""); }
 
 // Normalize ANY stored event (client-canonical with source:"ui", or a raw
@@ -2911,9 +2916,66 @@ function cellShowsBestCiStar(cell) {
 }
 
 
+// ── One-click update/restart (POST /api/system/update-restart) helpers ──────
+
+// Topbar version chip: short commit + truncated subject; full info on hover.
+function formatVersionChip(info) {
+  if (!info || !info.commit) return { text: "版本未知", title: "无法读取 git 版本" };
+  const commit = String(info.commit);
+  const subj = String(info.subject || "").trim();
+  const branch = String(info.branch || "");
+  const short = subj.length > 30 ? subj.slice(0, 30) + "…" : subj;
+  return {
+    text: short ? commit + " · " + short : commit,
+    title: [branch ? "分支 " + branch : "", commit, subj].filter(Boolean).join("\n"),
+  };
+}
+
+// Has a NEW process come up? The frontend captures app_started_at before the
+// restart; a strictly different stamp from a fresh /api/health means the
+// restart completed. While the server is down the poll just fails and retries.
+function updateRestartDone(beforeStartedAt, healthResp) {
+  if (!healthResp) return false;
+  const now = healthResp.app_started_at;
+  if (!now) return false;
+  return String(now) !== String(beforeStartedAt || "");
+}
+
+// One-line summary of the launcher's pull result, surfaced once after reconnect.
+// Returns {level, text} for the unified log, or null when there's nothing to show.
+function formatUpdateResult(lastUpdate) {
+  if (!lastUpdate || typeof lastUpdate !== "object") return null;
+  const fc = lastUpdate.from_commit || "?";
+  const tc = lastUpdate.to_commit || "?";
+  if (lastUpdate.rolled_back) {
+    return {
+      level: "error",
+      text: `更新已回滚到 ${fc}（新版本依赖安装/导入失败，已用原版本重启以保持可用）`,
+    };
+  }
+  if (lastUpdate.ok) {
+    const pip = lastUpdate.pip_ran
+      ? (lastUpdate.pip_ok ? " · 依赖已更新" : " · ⚠ 依赖安装失败")
+      : "";
+    const warnPip = lastUpdate.pip_ran && !lastUpdate.pip_ok;
+    return {
+      level: warnPip ? "warn" : "ok",
+      text: lastUpdate.changed
+        ? `更新完成 ${fc} → ${tc}${pip}`
+        : `已是最新 ${tc}（无新提交）${pip}`,
+    };
+  }
+  const tail = String(lastUpdate.output || "").split("\n").filter(Boolean).slice(-1)[0] || "";
+  return { level: "error", text: `git pull 失败，已用原版本重启${tail ? "：" + tail : ""}` };
+}
+
+
 const PURE = {
   I18N,
   fmt,
+  formatVersionChip,
+  updateRestartDone,
+  formatUpdateResult,
   fNum,
   fInt,
   fRate,

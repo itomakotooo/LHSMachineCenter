@@ -1513,6 +1513,53 @@ test("machineFreshness: has_current_md5_report overrides best-report md5_status"
     "resample");
 });
 
+test("formatVersionChip: commit + truncated subject, blanks when unknown", () => {
+  const c = PURE.formatVersionChip({ commit: "abc1234", subject: "fix: something short", branch: "collab/dev" });
+  assert.ok(c.text.startsWith("abc1234"));
+  assert.ok(c.title.includes("collab/dev"));
+  const long = PURE.formatVersionChip({ commit: "abc1234", subject: "x".repeat(60) });
+  assert.ok(long.text.length < 50 && long.text.includes("…"));
+  assert.equal(PURE.formatVersionChip(null).text, "版本未知");
+  assert.equal(PURE.formatVersionChip({ commit: "" }).text, "版本未知");
+});
+
+test("updateRestartDone: true only when app_started_at changes", () => {
+  assert.equal(PURE.updateRestartDone("T1", { app_started_at: "T2" }), true);
+  assert.equal(PURE.updateRestartDone("T1", { app_started_at: "T1" }), false);
+  assert.equal(PURE.updateRestartDone("T1", null), false);
+  assert.equal(PURE.updateRestartDone("T1", {}), false);
+  assert.equal(PURE.updateRestartDone("", { app_started_at: "T2" }), true);
+});
+
+test("formatUpdateResult: ok/changed, unchanged, pip-fail warn, pull-fail error", () => {
+  assert.equal(PURE.formatUpdateResult(null), null);
+  const changed = PURE.formatUpdateResult({ ok: true, changed: true, from_commit: "aaa", to_commit: "bbb" });
+  assert.equal(changed.level, "ok");
+  assert.ok(changed.text.includes("aaa") && changed.text.includes("bbb"));
+  const same = PURE.formatUpdateResult({ ok: true, changed: false, to_commit: "bbb" });
+  assert.equal(same.level, "ok");
+  const pipFail = PURE.formatUpdateResult({ ok: true, changed: true, pip_ran: true, pip_ok: false, from_commit: "a", to_commit: "b" });
+  assert.equal(pipFail.level, "warn");
+  const pullFail = PURE.formatUpdateResult({ ok: false, output: "error: cannot fast-forward\nabort" });
+  assert.equal(pullFail.level, "error");
+  assert.ok(pullFail.text.includes("失败"));
+  // rolled_back wins even when ok=true (pull succeeded but deps broke → reverted).
+  const rb = PURE.formatUpdateResult({ ok: true, changed: false, rolled_back: true, from_commit: "aaa", to_commit: "aaa" });
+  assert.equal(rb.level, "error");
+  assert.ok(rb.text.includes("回滚") && rb.text.includes("aaa"));
+});
+
+test("buildClientEvent: update_start/update_result map to op=更新", () => {
+  const start = PURE.buildClientEvent("update_start", { text: "go" }, "2026-01-01T00:00:00Z");
+  assert.equal(start.op, "update");
+  assert.equal(start.level, "info");
+  const res = PURE.buildClientEvent("update_result", { level: "error", text: "boom" }, "2026-01-01T00:00:00Z");
+  assert.equal(res.op, "update");
+  assert.equal(res.level, "error");
+  assert.equal(res.text, "boom");
+  assert.equal(PURE.logOpLabel("update"), "更新");
+});
+
 test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {
   // 2026-04-21 regression guard: a 165-chunk resume-from-cache replay
   // used to appear stuck (no events for ~80s). The analyzer now emits

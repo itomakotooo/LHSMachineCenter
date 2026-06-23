@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +53,37 @@ def utc_now() -> str:
 
 
 APP_STARTED_AT = utc_now()
+
+
+def _run_git(args: list[str], timeout: float = 6.0) -> tuple[int, str]:
+    """Run a git command in the repo ``ROOT``; return ``(returncode, text)``
+    where text is stdout+stderr. Never raises — git absence / timeout /
+    not-a-repo all return a non-zero code with the error string, so callers
+    degrade gracefully (version chip shows blanks; the update button is gated
+    on the ``supervised`` flag, not on git succeeding). ``ROOT`` is a module
+    global resolved at call time."""
+    try:
+        p = subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+    except Exception as exc:  # FileNotFoundError (no git on PATH), TimeoutExpired, …
+        return 1, str(exc)
+
+
+def _git_head_info() -> dict[str, str]:
+    """Best-effort short commit / subject / branch of repo HEAD."""
+    rc, commit = _run_git(["rev-parse", "--short", "HEAD"])
+    _, subject = _run_git(["log", "-1", "--format=%s"])
+    _, branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    return {
+        "commit": commit.strip() if rc == 0 else "",
+        "subject": subject.strip(),
+        "branch": branch.strip(),
+    }
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -7430,6 +7461,109 @@ def create_app(
         # Phase 2 (D13): returns registry.snapshot() as concurrency field.
         # B3 fix: passes state_dir so diagnostic files are surfaced.
         return current_system_state(store, manager, registry, state_dir=sd)
+
+    @app.get("/api/system/version")
+    def system_version() -> dict[str, Any]:
+        """Running build identity + whether one-click update/restart is
+        available. ``app_started_at`` is the process-start stamp the frontend
+        watches to detect that the restart actually happened. ``supervised``
+        is true only when launched under start_console.ps1 (which sets
+        ``SLOT_CONSOLE_SUPERVISED=1`` and owns the restart loop) — a manually
+        started ``uvicorn`` would NOT come back after self-exit, so the button
+        is gated on this. ``last_update`` is the launcher's result of the most
+        recent pull (surfaced once after the restart, then it's history)."""
+        info = _git_head_info()
+        last_update = None
+        try:
+            rf = sd / "update_result.json"
+            if rf.exists():
+                last_update = json.loads(rf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            last_update = None
+        snap = registry.snapshot()
+        running = store.list_runs_by_status("running", limit=2000)
+        return {
+            "commit": info["commit"],
+            "subject": info["subject"],
+            "branch": info["branch"],
+            "app_started_at": APP_STARTED_AT,
+            "supervised": os.environ.get("SLOT_CONSOLE_SUPERVISED") == "1",
+            "busy": bool(snap.get("global_ops")) or len(running) > 0,
+            "running_runs_count": len(running),
+            "last_update": last_update,
+        }
+
+    @app.post("/api/system/update-restart")
+    def system_update_restart(request: Request, force: bool = False) -> dict[str, Any]:
+        """Operator-triggered ``git pull`` + restart, so the server console can
+        be updated without an SSH/RDP session. Mechanics: a process cannot
+        reliably restart itself, so we hand off to the supervising launcher —
+        write a sentinel (``state/console/update_request.json``), then self-exit
+        cleanly. start_console.ps1's restart loop sees the sentinel, runs
+        ``git pull --ff-only`` (+ pip install iff requirements changed), writes
+        ``update_result.json``, and re-launches uvicorn on the new code.
+
+        Guards:
+        * ``supervised`` — refuse if not under the launcher (else self-exit ⇒
+          console stays down with nothing to bring it back).
+        * busy — refuse (409) if a sample/generate is running, unless force,
+          since the restart kills in-flight subprocesses.
+        """
+        if os.environ.get("SLOT_CONSOLE_SUPERVISED") != "1":
+            raise HTTPException(
+                status_code=409,
+                detail="console 未在受管启动器(start.bat / start_console.ps1)下运行,无法自动更新重启——请用 start.bat 启动后再用此功能。",
+            )
+        snap = registry.snapshot()
+        running = store.list_runs_by_status("running", limit=2000)
+        if (snap.get("global_ops") or running) and not force:
+            raise HTTPException(
+                status_code=409,
+                detail=f"有 {len(running)} 个运行中操作(采样/生成);更新重启会中断它们。先停止/等待,或确认强制重启。",
+            )
+        info = _git_head_info()
+        # Audit trail: the console has no auth (internal LAN deploy), so record
+        # WHO asked for the update (client IP) into the sentinel + result for
+        # after-the-fact review. Not a security control — see README_DEPLOY.
+        client_ip = ""
+        try:
+            client_ip = request.client.host if request.client else ""
+        except Exception:
+            client_ip = ""
+        sentinel = sd / "update_request.json"
+        try:
+            sentinel.parent.mkdir(parents=True, exist_ok=True)
+            sentinel.write_text(
+                json.dumps(
+                    {
+                        "requested_at": utc_now(),
+                        "from_commit": info["commit"],
+                        "from_subject": info["subject"],
+                        "client_ip": client_ip,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"无法写入更新标记: {exc}") from exc
+
+        # Self-exit AFTER the HTTP response flushes, so the browser gets the
+        # 200 (and starts polling app_started_at) before the process dies. The
+        # launcher loop then pulls + restarts. os._exit(0) is deliberate: a
+        # clean exit-0 with the sentinel present is the launcher's "update"
+        # signal (exit-0 WITHOUT the sentinel = operator Ctrl+C = stay down).
+        def _exit_after_flush() -> None:
+            time.sleep(2.0)
+            os._exit(0)
+
+        threading.Thread(target=_exit_after_flush, daemon=True).start()
+        return {
+            "ok": True,
+            "from_commit": info["commit"],
+            "app_started_at": APP_STARTED_AT,
+            "eta_seconds": 30,
+        }
 
     @app.get("/api/machines")
     def machines() -> dict[str, Any]:
