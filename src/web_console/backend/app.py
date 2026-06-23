@@ -8591,9 +8591,16 @@ def create_app(
                 continue
             events = read_progress_events(Path(pf_str))
             for ev in events:
-                if ev.get("chunks_completed") is not None:
+                # chunk_progress events carry BOTH chunk_index (ALWAYS present) and
+                # chunks_completed (present in MOST but not all — ~3% of runs emit
+                # only chunk_index, leaving the live meter stuck at 0%). Prefer the
+                # accurate "completed" count, fall back to the always-present index.
+                _cc = ev.get("chunks_completed")
+                if _cc is None:
+                    _cc = ev.get("chunk_index")
+                if _cc is not None:
                     latest_progress[str(r.get("run_id"))] = {
-                        "chunks_completed": ev.get("chunks_completed"),
+                        "chunks_completed": _cc,
                         "total_spins": ev.get("total_spins"),
                         "current_halfwidth_pp": ev.get("current_halfwidth_pp"),
                     }
@@ -8609,7 +8616,9 @@ def create_app(
                     "model_id": r.get("model_id") or "sampling",
                     "run_status": r.get("status"),
                     "event": ev.get("event"),
-                    "chunks_completed": ev.get("chunks_completed"),
+                    "chunks_completed": (ev.get("chunks_completed")
+                                         if ev.get("chunks_completed") is not None
+                                         else ev.get("chunk_index")),
                     "total_spins": ev.get("total_spins"),
                     "current_halfwidth_pp": ev.get("current_halfwidth_pp"),
                     "stop_reason": ev.get("stop_reason"),
