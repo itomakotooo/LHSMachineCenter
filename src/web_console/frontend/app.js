@@ -756,10 +756,21 @@ function _machineFreshnessChip(machine) {
   }
   const raw = state._rawByMachineCache[machine];
   if (!modeMap && !raw) return "";  // nothing loaded yet → no misleading chip
-  const f = PURE.machineFreshness(modeMap, raw);
-  const short = { current: "当前", ready_regen: "待生成", resample: "待重采", none: "无" };
+  // Current effective analyzer version per mode (from the FRESH /api/versions/current).
+  // Lets the chip downgrade 当前 → analyzer 过期待重生 when the report's analyzer moved.
+  const effMap = ((state.currentVersions || {}).effective_versions) || {};
+  const currentEffByMode = {};
+  if (modeMap) {
+    for (const mode of Object.keys(modeMap)) {
+      const v = effMap[machine + "|" + mode];
+      if (v) currentEffByMode[mode] = String(v);
+    }
+  }
+  const f = PURE.machineFreshness(modeMap, raw, currentEffByMode);
+  const short = { current: "当前", analyzer_stale: "待重生", ready_regen: "待生成", resample: "待重采", none: "无" };
   const tip = {
-    current: "有基于当前 server 版本的报表",
+    current: "有基于当前 server 版本 + 当前 analyzer 的报表",
+    analyzer_stale: "报表基于当前 server 版本，但 analyzer 已升级（过期）→ 点「重生 Report」（rawdata 已缓存，便宜）",
     ready_regen: "已有当前 server 版本 rawdata，但还没生成报表 → 点「重生 Report」",
     resample: "只有旧 server 版本的 rawdata → 需重新采样",
     none: "无 rawdata / 无报表",

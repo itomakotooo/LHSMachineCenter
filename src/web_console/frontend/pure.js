@@ -2452,33 +2452,54 @@ function formatRunMeter(run) {
   return { op, machine: run.machine || "", mode: (run.mode != null ? run.mode : null), pct, label: bits.join(" · ") };
 }
 
-// 4-state per-machine freshness for the catalog chip — answers "is there a report
-// on the CURRENT server version, and if not, do I 重生 or 重采?":
-//   current      🟢 a report exists on current-md5 rawdata (some mode md5_status="match").
-//   ready_regen  🔵 current-md5 rawdata exists (kept_chunks>0) but NO current report → 重生.
-//   resample     🟠 no current rawdata — only historical chunks, and/or only an
-//                   outdated report with no usable data → must 重采.
-//   none         ⚪ no report and no rawdata at all (never sampled / decommissioned).
-// modeDataMap: machinesSummary.machines[machine] (mode → {md5_status, …}).
+// 5-state per-machine freshness for the catalog chip — answers "is this machine's
+// report FULLY current (server md5 AND analyzer), and if not, what's the action?":
+//   current        🟢 ∃ a report that is server-md5-current AND analyzer-current.
+//   analyzer_stale 🟡 ∃ a server-md5-current report but it's analyzer-stale (the
+//                     analyzer code moved since it was generated) AND current rawdata
+//                     exists → 重生 (cheap, rawdata cached). The whole point of M104:
+//                     a server-current-but-analyzer-stale report must NOT read as 当前.
+//   ready_regen    🔵 current-md5 rawdata exists but NO server-current report → 生成.
+//   resample       🟠 no current rawdata — only historical, and/or a report that can't
+//                     be (re)generated without fresh data → 重采.
+//   none           ⚪ no report and no rawdata at all (never sampled / decommissioned).
+// modeDataMap: machinesSummary.machines[machine] (mode → {md5_status, has_current_md5_report,
+//   current_md5_eff_versions, …}).
 // rawdataEntry: rawdataOverview.per_machine row {kept_chunks, historical_chunks} | null.
-// This is purely a SERVER-VERSION (rawdata md5) answer — analyzer staleness is a
-// separate, cosmetic dimension and is deliberately not folded in.
-const FRESHNESS_LABEL = { current: "当前", ready_regen: "数据就绪待生成", resample: "需重新采样", none: "无报表/无数据" };
-function machineFreshness(modeDataMap, rawdataEntry) {
-  const modes = (modeDataMap && typeof modeDataMap === "object") ? Object.values(modeDataMap) : [];
-  // Prefer the backend's robust "∃ a current-version report" flag (set per mode
-  // by the summary builder, scanning ALL versions). Fall back to the best-report
-  // md5_status for summaries built before that field existed. md5_status reflects
-  // only the lowest-CI "best" report, which can mask a freshly-sampled current one.
-  const hasCurrentReport = modes.some((d) => d && (d.has_current_md5_report === true || d.md5_status === "match"));
-  const hasAnyReport = modes.length > 0;
+// currentEffByMode: {mode → current effective_analyzer_version} from the FRESH
+//   /api/versions/current (state.currentVersions.effective_versions[machine|mode]).
+//   Omit/empty → analyzer dimension unverifiable, never downgrades (back-compat).
+const FRESHNESS_LABEL = {
+  current: "当前", analyzer_stale: "analyzer 过期待重生",
+  ready_regen: "数据就绪待生成", resample: "需重新采样", none: "无报表/无数据",
+};
+function machineFreshness(modeDataMap, rawdataEntry, currentEffByMode) {
+  const entries = (modeDataMap && typeof modeDataMap === "object") ? Object.entries(modeDataMap) : [];
+  const effBy = currentEffByMode || {};
+  // Server-md5-current: prefer the robust per-mode flag (scans ALL versions); fall
+  // back to the best-report md5_status for summaries built before that field.
+  const serverCurrentOf = (d) => Boolean(d && (d.has_current_md5_report === true || d.md5_status === "match"));
+  // Fully current = server-md5-current AND analyzer-current. Analyzer-current means a
+  // server-current report's stored effective_analyzer_version matches the FRESH current
+  // one. Downgrade ONLY when we KNOW it's stale (have both the current eff AND the
+  // report's eff(s), and none matches) — unknown stays current (unverifiable ≠ stale).
+  const fullyCurrentOf = (mode, d) => {
+    if (!serverCurrentOf(d)) return false;
+    const curEff = effBy[mode];
+    const effs = Array.isArray(d && d.current_md5_eff_versions) ? d.current_md5_eff_versions : [];
+    if (!curEff || effs.length === 0) return true;
+    return effs.includes(curEff);
+  };
+  const hasFullyCurrent = entries.some(([mode, d]) => fullyCurrentOf(mode, d));
+  const hasServerCurrent = entries.some(([, d]) => serverCurrentOf(d));
+  const hasAnyReport = entries.length > 0;
   const kept = Number((rawdataEntry && rawdataEntry.kept_chunks) || 0);
   const hist = Number((rawdataEntry && rawdataEntry.historical_chunks) || 0);
   let state;
-  if (hasCurrentReport) state = "current";               // current-version report exists
-  else if (kept > 0) state = "ready_regen";              // current rawdata, just needs a report
-  else if (hist > 0 || hasAnyReport) state = "resample"; // no current data → must resample
-  else state = "none";                                   // nothing at all
+  if (hasFullyCurrent) state = "current";                       // server + analyzer both current
+  else if (kept > 0) state = hasServerCurrent ? "analyzer_stale" : "ready_regen";
+  else if (hist > 0 || hasAnyReport) state = "resample";        // no current data → must resample
+  else state = "none";                                          // nothing at all
   return { state, label: FRESHNESS_LABEL[state] };
 }
 

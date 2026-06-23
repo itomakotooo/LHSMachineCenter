@@ -3915,6 +3915,12 @@ def _build_machines_summary(
             # which version happens to win the CI tiebreak.
             _up_cfg, _up_code = _get_machine_md5(machine, mode=mode)
             _has_current_report = False
+            # effective_analyzer_version of the SERVER-md5-current reports. Stable
+            # per-report data (stored in the JSON) — safe to cache. The frontend
+            # compares it against the FRESH current effective version from
+            # /api/versions/current to decide "当前 vs analyzer 过期待重生", so the
+            # analyzer dimension never goes stale through THIS cache.
+            _current_md5_effs: set[str] = set()
 
             for ver_dir in versions_dir.iterdir():
                 if not ver_dir.is_dir():
@@ -3940,6 +3946,9 @@ def _build_machines_summary(
                         and str(s.get("config_md5", "")) == _up_cfg
                         and str(s.get("code_md5", "")) == _up_code):
                     _has_current_report = True
+                    _eff = str(s.get("effective_analyzer_version") or "")
+                    if _eff:
+                        _current_md5_effs.add(_eff)
 
                 if best is None or ci_val <= best_ci:
                     best_ci = ci_val
@@ -3994,6 +4003,10 @@ def _build_machines_summary(
                 # Robust "∃ a current-server-version report?" — drives the catalog
                 # freshness chip's 当前 verdict, independent of the best-CI tiebreak.
                 best["has_current_md5_report"] = _has_current_report
+                # The server-current reports' analyzer versions (sorted) so the chip
+                # can downgrade 当前 → analyzer 过期待重生 when none matches the
+                # fresh current effective version.
+                best["current_md5_eff_versions"] = sorted(_current_md5_effs)
 
                 result[machine][str(mode)] = best
                 zwr = best.get("zero_win_rate", 0)

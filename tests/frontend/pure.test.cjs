@@ -1513,6 +1513,45 @@ test("machineFreshness: has_current_md5_report overrides best-report md5_status"
     "resample");
 });
 
+test("machineFreshness: analyzer dimension — server-current but analyzer-stale ≠ 当前", () => {
+  // M104 repro: server-md5-current report, but its analyzer eff ("OLD") ≠ the fresh
+  // current eff ("NEW"), and current rawdata exists → analyzer_stale (待重生), NOT 当前.
+  assert.equal(
+    PURE.machineFreshness(
+      { "1": { has_current_md5_report: true, current_md5_eff_versions: ["OLD"] } },
+      { kept_chunks: 5 }, { "1": "NEW" }).state,
+    "analyzer_stale");
+  // Analyzer-current (current eff IS among the server-current reports' effs) → 当前.
+  assert.equal(
+    PURE.machineFreshness(
+      { "1": { has_current_md5_report: true, current_md5_eff_versions: ["NEW"] } },
+      { kept_chunks: 5 }, { "1": "NEW" }).state,
+    "current");
+  // Analyzer-stale but NO current rawdata → can't regen → 需重新采样.
+  assert.equal(
+    PURE.machineFreshness(
+      { "1": { has_current_md5_report: true, current_md5_eff_versions: ["OLD"] } },
+      { kept_chunks: 0, historical_chunks: 1 }, { "1": "NEW" }).state,
+    "resample");
+  // Unverifiable analyzer (report has no stored eff, or no current eff) → never downgrade.
+  assert.equal(
+    PURE.machineFreshness(
+      { "1": { has_current_md5_report: true, current_md5_eff_versions: [] } },
+      { kept_chunks: 5 }, { "1": "NEW" }).state,
+    "current");
+  assert.equal(
+    PURE.machineFreshness(
+      { "1": { has_current_md5_report: true, current_md5_eff_versions: ["OLD"] } },
+      { kept_chunks: 5 }).state,  // no currentEffByMode arg → back-compat
+    "current");
+  // No server-current report at all + current rawdata → ready_regen (not analyzer_stale).
+  assert.equal(
+    PURE.machineFreshness(
+      { "1": { md5_status: "outdated", has_current_md5_report: false } },
+      { kept_chunks: 5 }, { "1": "NEW" }).state,
+    "ready_regen");
+});
+
 test("formatVersionChip: commit + truncated subject, blanks when unknown", () => {
   const c = PURE.formatVersionChip({ commit: "abc1234", subject: "fix: something short", branch: "collab/dev" });
   assert.ok(c.text.startsWith("abc1234"));

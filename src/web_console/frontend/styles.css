@@ -2628,10 +2628,11 @@ button.feature-chip {
   vertical-align: middle;
   cursor: help;
 }
-.cat-fresh-current     { color: #1e5d2a; background: #d6efd9; }   /* 🟢 当前 */
-.cat-fresh-ready_regen { color: #1e40af; background: #dbeafe; }   /* 🔵 待生成 */
-.cat-fresh-resample    { color: #9a3412; background: #ffedd5; }   /* 🟠 待重采 */
-.cat-fresh-none        { color: #64748b; background: #e2e8f0; }   /* ⚪ 无 */
+.cat-fresh-current        { color: #1e5d2a; background: #d6efd9; }   /* 🟢 当前 */
+.cat-fresh-analyzer_stale { color: #854d0e; background: #fef3c7; }   /* 🟡 analyzer 过期待重生 */
+.cat-fresh-ready_regen    { color: #1e40af; background: #dbeafe; }   /* 🔵 待生成 */
+.cat-fresh-resample       { color: #9a3412; background: #ffedd5; }   /* 🟠 待重采 */
+.cat-fresh-none           { color: #64748b; background: #e2e8f0; }   /* ⚪ 无 */
 
 /* Category group dot */
 .catalog-group-dot {
