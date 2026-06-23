@@ -1474,6 +1474,27 @@ test("formatRunMeter: generate lane + no max_chunks → pct null, clamps", () =>
   assert.equal(over.pct, 100);                  // clamped
 });
 
+test("machineFreshness: 4-state — current / ready_regen / resample / none", () => {
+  // current: a mode report is md5_status=match (report on current server version)
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "match" } }, { kept_chunks: 8 }).state, "current");
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "outdated" }, "7": { md5_status: "match" } }, null).state, "current");
+  // ready_regen: no current report, but current-md5 rawdata exists → 重生
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "outdated" } }, { kept_chunks: 8, historical_chunks: 8 }).state, "ready_regen");
+  assert.equal(PURE.machineFreshness({}, { kept_chunks: 8 }).state, "ready_regen");
+  // resample: only historical rawdata → 重采
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "outdated" } }, { kept_chunks: 0, historical_chunks: 8 }).state, "resample");
+  // resample: outdated report but rawdata fully cleaned (no current, no historical) → still 重采, not "无"
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "outdated" } }, null).state, "resample");
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "outdated" } }, { kept_chunks: 0, historical_chunks: 0 }).state, "resample");
+  // none: truly nothing — no report AND no rawdata
+  assert.equal(PURE.machineFreshness({}, { kept_chunks: 0, historical_chunks: 0 }).state, "none");
+  assert.equal(PURE.machineFreshness({}, null).state, "none");
+  // unverifiable report (no roster md5) is NOT "current"
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "unverifiable" } }, { kept_chunks: 5 }).state, "ready_regen");
+  // labels present
+  assert.equal(PURE.machineFreshness({ "1": { md5_status: "match" } }, null).label, "当前");
+});
+
 test("formatChunkEventText: cache_read_start shows total + rough ETA", () => {
   // 2026-04-21 regression guard: a 165-chunk resume-from-cache replay
   // used to appear stuck (no events for ~80s). The analyzer now emits

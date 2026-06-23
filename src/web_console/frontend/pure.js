@@ -2447,6 +2447,32 @@ function formatRunMeter(run) {
   return { op, machine: run.machine || "", mode: (run.mode != null ? run.mode : null), pct, label: bits.join(" · ") };
 }
 
+// 4-state per-machine freshness for the catalog chip — answers "is there a report
+// on the CURRENT server version, and if not, do I 重生 or 重采?":
+//   current      🟢 a report exists on current-md5 rawdata (some mode md5_status="match").
+//   ready_regen  🔵 current-md5 rawdata exists (kept_chunks>0) but NO current report → 重生.
+//   resample     🟠 no current rawdata — only historical chunks, and/or only an
+//                   outdated report with no usable data → must 重采.
+//   none         ⚪ no report and no rawdata at all (never sampled / decommissioned).
+// modeDataMap: machinesSummary.machines[machine] (mode → {md5_status, …}).
+// rawdataEntry: rawdataOverview.per_machine row {kept_chunks, historical_chunks} | null.
+// This is purely a SERVER-VERSION (rawdata md5) answer — analyzer staleness is a
+// separate, cosmetic dimension and is deliberately not folded in.
+const FRESHNESS_LABEL = { current: "当前", ready_regen: "数据就绪待生成", resample: "需重新采样", none: "无报表/无数据" };
+function machineFreshness(modeDataMap, rawdataEntry) {
+  const modes = (modeDataMap && typeof modeDataMap === "object") ? Object.values(modeDataMap) : [];
+  const hasCurrentReport = modes.some((d) => d && d.md5_status === "match");
+  const hasAnyReport = modes.length > 0;
+  const kept = Number((rawdataEntry && rawdataEntry.kept_chunks) || 0);
+  const hist = Number((rawdataEntry && rawdataEntry.historical_chunks) || 0);
+  let state;
+  if (hasCurrentReport) state = "current";               // current-version report exists
+  else if (kept > 0) state = "ready_regen";              // current rawdata, just needs a report
+  else if (hist > 0 || hasAnyReport) state = "resample"; // no current data → must resample
+  else state = "none";                                   // nothing at all
+  return { state, label: FRESHNESS_LABEL[state] };
+}
+
 // Filter canonical log entries for the unified panel. ``filter`` =
 // {errorsOnly?, op?, query?}:
 //   errorsOnly — keep only level error|warn (the "仅错误/警告" toggle).
@@ -2917,6 +2943,7 @@ const PURE = {
   toCanonicalLogEntry,
   filterLogEntries,
   formatRunMeter,
+  machineFreshness,
   formatChunkEventText,
   computeElapsedSeconds,
   computeInflightChunks,

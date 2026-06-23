@@ -710,18 +710,23 @@ function _catalogModeMetrics(machine) {
     const mechIcons = (d.mechanics || []).map((mk) => MECH_ICONS[mk] || "").join("");
     const md5 = d.md5_status;
     const ciVal = d.ci_halfwidth_pp;
-    const ciAccurate = ciVal != null && ciVal <= 0.5;
+    // Version icon = PURE server-version status (no longer mixed with CI). ✓ means
+    // "report on the CURRENT server version", regardless of CI precision.
     let md5Icon = '';
     if (md5 === "match") {
-      md5Icon = ciAccurate
-        ? '<span class="md5-match" title="report MD5 匹配上游，CI ≤ 0.5pp">✓</span>'
-        : `<span class="md5-partial" title="report MD5 匹配但 CI 不精确 (${ciVal == null ? 'null' : '>' + '0.5pp'})">🟡</span>`;
+      md5Icon = '<span class="md5-match" title="report 基于当前 server 版本">✓</span>';
     } else if (md5 === "outdated") {
-      md5Icon = '<span class="md5-mismatch" title="机台版本已变更，report 过期">⚠</span>';
+      md5Icon = '<span class="md5-mismatch" title="report 基于旧 server 版本（需重采 / 重生）">⚠</span>';
     } else if (md5 === "untagged") {
-      md5Icon = '<span class="muted" title="旧格式 report 无 MD5 标签">?</span>';
+      md5Icon = '<span class="muted" title="旧格式 report 无版本标签">?</span>';
     }
-    return `<div class="cat-mode-row">${md5Icon} <span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> <span class="cat-ci">${ci}</span> ${volHtml}${mechIcons ? ` <span class="cat-mech" title="${d.mechanics.join(', ')}">${mechIcons}</span>` : ""}</div>`;
+    // CI precision is a SEPARATE quality signal — colour the ± value amber when
+    // loose (> 0.5pp). It is NOT a version problem (the old 🟡 conflated the two).
+    const ciLoose = ciVal != null && ciVal > 0.5;
+    const ciHtml = ci
+      ? `<span class="cat-ci${ciLoose ? ' cat-ci-loose' : ''}"${ciLoose ? ' title="CI 不精确 (>0.5pp)，多采可收窄"' : ''}>${ci}</span>`
+      : '';
+    return `<div class="cat-mode-row">${md5Icon} <span class="cat-mode-label">m${mode}</span> <span class="cat-rtp">${rtp}</span> ${ciHtml} ${volHtml}${mechIcons ? ` <span class="cat-mech" title="${d.mechanics.join(', ')}">${mechIcons}</span>` : ""}</div>`;
   }).join("");
 }
 
@@ -732,6 +737,34 @@ function _machineData(machineName) {
   if (!modes.length) return null;
   const best = modes.includes("2") ? "2" : modes.sort((a, b) => Number(a) - Number(b))[0];
   return sm[best] || null;
+}
+
+// 4-state freshness chip for a catalog card — the clear "有没有当前 server 版本报表"
+// answer. Combines the per-mode report md5_status (machinesSummary) with the
+// machine's rawdata classification (rawdataOverview.per_machine) via
+// PURE.machineFreshness: 当前 / 待生成 / 待重采 / 无. Rawdata lookup is built once
+// per overview and cached on state (avoids an O(n) find per card).
+function _machineFreshnessChip(machine) {
+  const modeMap = ((state.machinesSummary || {}).machines || {})[machine];
+  if (!state._rawByMachineCache || state._rawByMachineSrc !== state.rawdataOverview) {
+    const map = {};
+    (((state.rawdataOverview || {}).per_machine) || []).forEach((r) => {
+      if (r && r.machine) map[r.machine] = r;
+    });
+    state._rawByMachineCache = map;
+    state._rawByMachineSrc = state.rawdataOverview;
+  }
+  const raw = state._rawByMachineCache[machine];
+  if (!modeMap && !raw) return "";  // nothing loaded yet → no misleading chip
+  const f = PURE.machineFreshness(modeMap, raw);
+  const short = { current: "当前", ready_regen: "待生成", resample: "待重采", none: "无" };
+  const tip = {
+    current: "有基于当前 server 版本的报表",
+    ready_regen: "已有当前 server 版本 rawdata，但还没生成报表 → 点「重生 Report」",
+    resample: "只有旧 server 版本的 rawdata → 需重新采样",
+    none: "无 rawdata / 无报表",
+  };
+  return `<span class="cat-fresh cat-fresh-${f.state}" title="${f.label} — ${tip[f.state] || ""}">${short[f.state]}</span>`;
 }
 
 // Card background color based on volatility percentile (heat map).
@@ -1102,9 +1135,10 @@ function renderMachineCatalog() {
       // Multi-select checkbox: stopPropagation in click handler so
       // card body click still focuses. Click body = focus, click
       // checkbox = batch multi-select (two independent affordances).
+      const freshChip = _machineFreshnessChip(m.machine);
       d.innerHTML =
         `<input type="checkbox" class="catalog-check" title="加入批量操作" ${isMulti ? "checked" : ""}>` +
-        `<div class="catalog-title">${m.machine}${reviewBadge}${brokenBadge}${reportBadge}</div>` +
+        `<div class="catalog-title">${m.machine}${freshChip}${reviewBadge}${brokenBadge}${reportBadge}</div>` +
         `${metrics || `<div class="catalog-modes">modes: ${(m.modes || []).join(", ")}</div>`}`;
       if (issues.length) d.classList.add("broken-machine");
       grid.appendChild(d);
@@ -1487,6 +1521,11 @@ async function refreshRawdataOverview() {
     state.rawdataOverviewError = String(err?.message || err || "unknown error");
   }
   renderRawdataBanner();
+  // The catalog freshness chip (待生成 vs 待重采) depends on this overview's
+  // per-machine current/historical rawdata. On initial load the catalog can
+  // render before the overview resolves (both async), and rawdata ops change
+  // the classification — so re-render the catalog here to keep chips truthful.
+  if (state.machines && state.machines.length) renderMachineCatalog();
   // If the global detail view is already showing, re-render the table
   // so size/row changes after a cleanup reflect immediately.
   if (state.showGlobalRawdata) renderRawdataGlobalTable();

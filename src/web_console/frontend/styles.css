@@ -2541,6 +2541,26 @@ button.feature-chip {
 .catalog-review.reviewed { color: #4a5a6f; background: #e2e8f0; }
 .catalog-review.pending  { color: #8a5a00; background: #fdf2c8; }
 
+/* Per-machine freshness chip — the clear "有没有当前 server 版本报表" answer.
+   当前 / 待生成 / 待重采 / 无. Sits right after the machine name so it's the
+   first thing the eye lands on. Derived in _machineFreshnessChip via
+   PURE.machineFreshness (server-version dimension; CI + analyzer-staleness are
+   separate signals, not folded in). */
+.cat-fresh {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 9px;
+  vertical-align: middle;
+  cursor: help;
+}
+.cat-fresh-current     { color: #1e5d2a; background: #d6efd9; }   /* 🟢 当前 */
+.cat-fresh-ready_regen { color: #1e40af; background: #dbeafe; }   /* 🔵 待生成 */
+.cat-fresh-resample    { color: #9a3412; background: #ffedd5; }   /* 🟠 待重采 */
+.cat-fresh-none        { color: #64748b; background: #e2e8f0; }   /* ⚪ 无 */
+
 /* Category group dot */
 .catalog-group-dot {
   display: inline-block;
@@ -2571,6 +2591,9 @@ button.feature-chip {
   color: var(--muted);
   min-width: 36px;
 }
+/* Loose CI (> 0.5pp) — a precision/quality signal, NOT a version problem.
+   De-conflated from the version icon (the old 🟡 mixed the two). */
+.cat-ci-loose { color: #b45309; font-weight: 600; }
 .cat-vol {
   font-size: 10px;
   font-weight: 500;
