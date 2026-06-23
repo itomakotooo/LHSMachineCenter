@@ -12033,7 +12033,25 @@ def create_app(
                     return ""
                 return str(s.get("analyzer_version", "") or "")
 
+            def _version_effective(v_dir: Path) -> str:
+                sf = v_dir / "player_impact_summary.json"
+                if not sf.exists():
+                    return ""
+                try:
+                    s = json.loads(sf.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    return ""
+                return str(s.get("effective_analyzer_version", "") or "")
+
+            # Per-(machine, mode) current effective version. A stale OLDER version
+            # is pruned ONLY when a CURRENT-version report survives in the same cell
+            # (it's then redundant). When NO current report exists, staleness alone
+            # never deletes — fleet-wipe-safe (honesty-1).
+            from src.web_console.backend.effective_version_cache import EffectiveVersionCache  # noqa: PLC0415
+            eff_cache = EffectiveVersionCache()
+
             deleted = 0
+            stale_pruned = 0
             kept = 0
             runs_deleted = 0
             for machine_dir in rr.iterdir():
@@ -12052,27 +12070,50 @@ def create_app(
                     if not versions:
                         continue
 
-                    # Cleanup policy (honesty-1, 2026-05-29): the survivor
-                    # is the newest version overall, so every mode always
-                    # keeps a loadable baseline regardless of analyzer tag.
-                    # We prune ONLY older versions whose analyzer tag is
-                    # BYTE-IDENTICAL to the survivor's — i.e. superseded
-                    # exact-duplicates of the SAME version (recency dedup,
-                    # operator freeing disk). A version is NEVER deleted
-                    # because its tag mismatches the current analyzer (or
-                    # the survivor's) — a version tag classifies, it does
-                    # not destroy (`feedback_md5_is_a_tag_not_a_destruction_signal`).
-                    # The current analyzer version is intentionally NOT
-                    # consulted here for any delete decision (it backs only
-                    # the read-only banner endpoints). This is what stops the
-                    # honest-signal cutover (every machine marked stale
-                    # exactly once) from wiping the fleet's reports.
-                    survivor = versions[0]
-                    survivor_tag = _version_analyzer(survivor)
-                    to_delete = [
-                        v for v in versions[1:]
-                        if _version_analyzer(v) == survivor_tag
-                    ]
+                    # Cleanup policy (honesty-3 superseded prune, 2026-06-23 —
+                    # extends honesty-1). Two cases, gated on whether a CURRENT
+                    # (analyzer-fresh) report survives in this (machine, mode):
+                    #
+                    #   * current report EXISTS → it is the survivor; prune the
+                    #     now-redundant OLDER versions that are analyzer-STALE
+                    #     (effective != current) OR exact-tag duplicates. The
+                    #     destruction trigger is REDUNDANCY (a fresh report makes
+                    #     the stale one superfluous), not the tag in isolation —
+                    #     the cell always keeps its current report.
+                    #   * NO current report (e.g. a version flip just marked the
+                    #     whole fleet stale, or unverifiable/no-manifest) → prune
+                    #     ONLY exact-tag duplicates; staleness alone NEVER deletes.
+                    #     This is what stops the honest-signal cutover from wiping
+                    #     the fleet (`feedback_md5_is_a_tag_not_a_destruction_signal`).
+                    try:
+                        _mode_int = int(mode_dir.name.split("_")[1])
+                        cur_eff = eff_cache.get(machine_dir.name, _mode_int)
+                    except (FileNotFoundError, ValueError, IndexError):
+                        cur_eff = ""
+                    current_versions = (
+                        [v for v in versions if _version_effective(v) == cur_eff]
+                        if (cur_eff and cur_eff != EffectiveVersionCache.UNVERIFIABLE)
+                        else []
+                    )
+                    if current_versions:
+                        survivor = current_versions[0]  # newest current report
+                        survivor_tag = _version_analyzer(survivor)
+                        to_delete = [
+                            v for v in versions
+                            if v != survivor
+                            and (_version_effective(v) != cur_eff
+                                 or _version_analyzer(v) == survivor_tag)
+                        ]
+                        stale_pruned += sum(
+                            1 for v in to_delete if _version_effective(v) != cur_eff
+                        )
+                    else:
+                        survivor = versions[0]
+                        survivor_tag = _version_analyzer(survivor)
+                        to_delete = [
+                            v for v in versions[1:]
+                            if _version_analyzer(v) == survivor_tag
+                        ]
                     kept += 1
 
                     for old in to_delete:
@@ -12168,6 +12209,7 @@ def create_app(
             return {
                 "ok": True, "deleted": deleted, "kept": kept,
                 "runs_deleted": runs_deleted,
+                "stale_pruned": stale_pruned,
             }
         finally:
             registry.release_global("reports_cleanup")

@@ -8219,7 +8219,7 @@ async function refreshReportMgmtBanner() {
       <span class="report-mgmt-actions">
         ${regenBtn}
         <button id="rebuildAllReportsBtn" class="small-btn" title="扫所有含 rawdata 的 (机台, mode)，用当前 analyzer 全部重跑 generate-report (大批量，耗时长)">⟳ 全 fleet 重建</button>
-        <button id="reportCleanupBtn" class="small-btn danger-btn" title="清理 analyzer 过期的 report 版本 (按 machine+mode 只保留最新 match)">🗑 清理过期</button>
+        <button id="reportCleanupBtn" class="small-btn danger-btn" title="删除已被当前版报表取代的 analyzer 过期旧版本（仅当该 机台+mode 已有当前版报表时才删，否则只去重，绝不清空唯一报表）">🗑 清理过期版本</button>
         <button id="importReportsBtn" class="small-btn" title="从 dev_reports/ 导入离线生成的 report">📥 导入</button>
         <span id="reportCleanupResult" class="muted"></span>
       </span>
@@ -8297,7 +8297,7 @@ async function refreshReportMgmtBanner() {
     if (result) result.textContent = "...";
     try {
       const data = await apiPost("/api/reports/cleanup");
-      if (result) result.textContent = fmt("reportCleanupDone", { deleted: data.deleted, kept: data.kept });
+      if (result) result.textContent = `已清理：删除 ${data.deleted || 0} 个旧 report 版本（含 ${data.stale_pruned || 0} 个 analyzer 过期，仅当该机台已有当前版报表时才删）`;
       const [m, mSummary] = await Promise.all([apiGet("/api/machines"), apiGet("/api/machines/summary").catch(() => null)]);
       state.machines = m.machines || [];
       state.machinesSummary = mSummary;
