@@ -9174,7 +9174,7 @@ async function refreshSystemVersion() {
   btn.disabled = !info.supervised;
   btn.title = info.supervised
     ? "git pull 最新代码并重启 console"
-    : "需用 start.bat 启动（受管模式）才能自动更新重启";
+    : "需经受管启动器启动才能自动更新重启（服务器=SlotConsole 计划任务，本地=start.bat）";
   // Surface the launcher's last pull result ONCE (cleared so it doesn't re-log
   // on every bootstrap / periodic refresh).
   if (info.last_update && !state._lastUpdateShown) {
@@ -9195,7 +9195,7 @@ async function doUpdateRestart() {
   if (state._updateInFlight) return;  // guard against double-click during the window
   const info = state.systemVersion || {};
   if (!info.supervised) {
-    alert("console 未在受管启动器（start.bat）下运行，无法自动更新重启。");
+    alert("console 未在受管启动器下运行，无法自动更新重启（服务器=SlotConsole 计划任务，本地=start.bat）。");
     return;
   }
   let force = false;

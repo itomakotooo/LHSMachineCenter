@@ -7512,7 +7512,7 @@ def create_app(
         if os.environ.get("SLOT_CONSOLE_SUPERVISED") != "1":
             raise HTTPException(
                 status_code=409,
-                detail="console 未在受管启动器(start.bat / start_console.ps1)下运行,无法自动更新重启——请用 start.bat 启动后再用此功能。",
+                detail="console 未在受管启动器(start_console.ps1)下运行,无法自动更新重启。服务器应由 SlotConsole 计划任务启动(它会调用 start_console.ps1);本地开发用 start.bat。",
             )
         snap = registry.snapshot()
         running = store.list_runs_by_status("running", limit=2000)
