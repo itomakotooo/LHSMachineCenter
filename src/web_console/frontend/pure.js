@@ -2316,6 +2316,7 @@ const CLIENT_KIND_OP = {
   md5_refresh_start: "md5", md5_refresh_done: "md5", md5_refresh_failed: "md5",
   generate_report_start: "generate", generate_report_done: "generate",
   generate_report_failed: "generate", generate_report_timeout: "generate",
+  generate_item_done: "generate", generate_item_failed: "generate", batch_generate_done: "generate",
   update_start: "update", update_result: "update",
 };
 
@@ -2378,6 +2379,21 @@ function buildClientEvent(kind, data, nowIso) {
     case "generate_report_timeout":
       return { ...base, level: "warn",
         text: `生成轮询超时 · last=${(data && data.last_status) || "unknown"}（后台可能仍在跑）` };
+    case "generate_item_done": {
+      const rtp = (data && data.rtp_pct != null) ? Number(data.rtp_pct).toFixed(2) + "%" : "—";
+      const ciStr = (data && data.halfwidth_pp != null) ? "±" + Number(data.halfwidth_pp).toFixed(2) + "pp" : "—";
+      const ch = (data && data.chunks != null) ? ` · ${data.chunks} chunks` : "";
+      return { ...base, level: "ok", text: `重生完成 · RTP ${rtp} · CI ${ciStr}${ch}` };
+    }
+    case "generate_item_failed":
+      return { ...base, level: "error", text: `重生失败 · ${(data && data.error) || "unknown"}` };
+    case "batch_generate_done": {
+      const c = (data && data.completed != null) ? data.completed : 0;
+      const t = (data && data.total != null) ? data.total : 0;
+      const fdone = (data && data.failed) || 0;
+      return { ...base, level: fdone > 0 ? "warn" : "ok",
+        text: `重生批次结束 · ${c}/${t} 完成${fdone ? ` · ${fdone} 失败` : ""}` };
+    }
     case "update_start":
       return { ...base, level: "info", text: (data && data.text) || "更新并重启 console…" };
     case "update_result":
@@ -2441,15 +2457,45 @@ function formatRunMeter(run) {
   run = run || {};
   const done = Number(run.chunks_completed || 0);
   const max = Number(run.max_chunks || 0);
-  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((done / max) * 100))) : null;
   const mid = String(run.model_id || "");
   const op = MODEL_ID_OP[mid] || (mid.includes("generate") ? "generate" : "sample");
+  // Chunk % is meaningful for SAMPLING (it fills chunk-by-chunk). A generate /
+  // regenerate is a one-shot analysis over cached chunks — chunks_completed
+  // doesn't advance, so a chunk-based % sticks at 0 and reads as "stuck". Show
+  // an indeterminate bar for generate instead of a misleading 0%. (Batch
+  // regenerate progress is item-based — see formatBatchGenerateMeter.)
+  const pct = (op !== "generate" && max > 0)
+    ? Math.max(0, Math.min(100, Math.round((done / max) * 100)))
+    : null;
   const bits = [];
-  if (max > 0) bits.push(`chunk ${done}/${max}`);
-  else if (done) bits.push(`chunk ${done}`);
-  if (run.total_spins != null) bits.push(`${Number(run.total_spins).toLocaleString()} spins`);
-  if (run.current_halfwidth_pp != null) bits.push(`CI±${Number(run.current_halfwidth_pp).toFixed(2)}pp`);
+  if (op !== "generate") {
+    if (max > 0) bits.push(`chunk ${done}/${max}`);
+    else if (done) bits.push(`chunk ${done}`);
+    if (run.total_spins != null) bits.push(`${Number(run.total_spins).toLocaleString()} spins`);
+    if (run.current_halfwidth_pp != null) bits.push(`CI±${Number(run.current_halfwidth_pp).toFixed(2)}pp`);
+  } else {
+    bits.push("生成中…");
+  }
   return { op, machine: run.machine || "", mode: (run.mode != null ? run.mode : null), pct, label: bits.join(" · ") };
+}
+
+// Item-based meter for an active batch-regenerate (重生) — the AUTHORITATIVE
+// progress the operator can perceive: "完成 X/Y (Z%)", not a stuck chunk bar.
+// progress: state.batchGenerateProgress = {total, completed, failed, items, status}.
+// Returns null when there's no active batch.
+function formatBatchGenerateMeter(progress) {
+  if (!progress || typeof progress !== "object") return null;
+  const status = String(progress.status || "");
+  if (status !== "running" && status !== "pending") return null;
+  const total = Number(progress.total || 0);
+  const completed = Number(progress.completed || 0);
+  const failed = Number(progress.failed || 0);
+  const running = (progress.items || []).filter((i) => i && i.status === "running").length;
+  const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((completed / total) * 100))) : null;
+  const bits = [`完成 ${completed}/${total}`];
+  if (running) bits.push(`${running} 运行中`);
+  if (failed) bits.push(`${failed} 失败`);
+  return { op: "generate", machine: "", mode: null, pct, label: bits.join(" · ") };
 }
 
 // 5-state per-machine freshness for the catalog chip — answers "is this machine's
@@ -2997,6 +3043,7 @@ const PURE = {
   formatVersionChip,
   updateRestartDone,
   formatUpdateResult,
+  formatBatchGenerateMeter,
   fNum,
   fInt,
   fRate,

@@ -1465,13 +1465,51 @@ test("formatRunMeter: chunk pct + label from an active run snapshot", () => {
   assert.ok(m.label.includes("CI±0.80pp"));
 });
 
-test("formatRunMeter: generate lane + no max_chunks → pct null, clamps", () => {
-  const g = PURE.formatRunMeter({ model_id: "generate-report", machine: "M278", mode: 1, chunks_completed: 5 });
+test("formatRunMeter: generate lane → indeterminate (not stuck 0%), sampling clamps", () => {
+  // Generate is one-shot over cached chunks — chunk % is meaningless and used to
+  // stick at 0%. Now indeterminate (pct null) with a 生成中 label, even when a
+  // max_chunks is reported.
+  const g = PURE.formatRunMeter({ model_id: "generate-report", machine: "M278", mode: 1, chunks_completed: 0, max_chunks: 10 });
   assert.equal(g.op, "generate");
-  assert.equal(g.pct, null);                    // unknown total → no bar fill
-  assert.ok(g.label.includes("chunk 5"));
+  assert.equal(g.pct, null);
+  assert.ok(g.label.includes("生成中"));
+  assert.ok(!g.label.includes("chunk"));
   const over = PURE.formatRunMeter({ model_id: "sampling", chunks_completed: 50, max_chunks: 40 });
   assert.equal(over.pct, 100);                  // clamped
+});
+
+test("formatBatchGenerateMeter: item-based pct + label, only when active", () => {
+  const m = PURE.formatBatchGenerateMeter({
+    status: "running", total: 39, completed: 12, failed: 1,
+    items: [{ status: "running" }, { status: "running" }, { status: "completed" }],
+  });
+  assert.equal(m.op, "generate");
+  assert.equal(m.pct, 31);                       // round(12/39*100)
+  assert.ok(m.label.includes("完成 12/39"));
+  assert.ok(m.label.includes("2 运行中"));
+  assert.ok(m.label.includes("1 失败"));
+  // Not active → null (no meter).
+  assert.equal(PURE.formatBatchGenerateMeter({ status: "completed", total: 39, completed: 39 }), null);
+  assert.equal(PURE.formatBatchGenerateMeter(null), null);
+  // total 0 → pct null (indeterminate), still a meter while pending.
+  assert.equal(PURE.formatBatchGenerateMeter({ status: "pending", total: 0, completed: 0 }).pct, null);
+});
+
+test("buildClientEvent: batch-regenerate per-item + done events (op=生成)", () => {
+  const ok = PURE.buildClientEvent("generate_item_done",
+    { machine: "M104", mode: 1, rtp_pct: 88.4, halfwidth_pp: 0.31, chunks: 2 }, "2026-01-01T00:00:00Z");
+  assert.equal(ok.op, "generate");
+  assert.equal(ok.level, "ok");
+  assert.equal(ok.machine, "M104");
+  assert.ok(ok.text.includes("重生完成") && ok.text.includes("88.40%") && ok.text.includes("2 chunks"));
+  const fail = PURE.buildClientEvent("generate_item_failed", { machine: "M9", mode: 1, error: "boom" }, "2026-01-01T00:00:00Z");
+  assert.equal(fail.level, "error");
+  assert.ok(fail.text.includes("重生失败") && fail.text.includes("boom"));
+  const doneWarn = PURE.buildClientEvent("batch_generate_done", { completed: 37, total: 39, failed: 2 }, "2026-01-01T00:00:00Z");
+  assert.equal(doneWarn.level, "warn");
+  assert.ok(doneWarn.text.includes("37/39") && doneWarn.text.includes("2 失败"));
+  const doneOk = PURE.buildClientEvent("batch_generate_done", { completed: 39, total: 39, failed: 0 }, "2026-01-01T00:00:00Z");
+  assert.equal(doneOk.level, "ok");
 });
 
 test("machineFreshness: 4-state — current / ready_regen / resample / none", () => {

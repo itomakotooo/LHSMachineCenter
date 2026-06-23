@@ -8243,7 +8243,8 @@ async function refreshReportMgmtBanner() {
       }
       const out = await resp.json();
       state.batchGenerateId = out.batch_id;
-      state.batchGenerateProgress = { total: out.total, completed: 0, failed: 0, pending: out.total };
+      state.batchGenerateProgress = { total: out.total, completed: 0, failed: 0, pending: out.total, status: "running", items: [] };
+      state._batchGenLogged = new Set();  // reset per-item dedup for the new batch
       if (meta) meta.textContent = fmt("batchGenerateBusy", { done: 0, total: out.total });
       updateActionStates();
       _startBatchGeneratePoll();
@@ -8351,6 +8352,34 @@ function _startBatchGeneratePoll() {
     try {
       const body = await apiGet(`/api/rawdata/batch-generate-report/${encodeURIComponent(state.batchGenerateId)}`);
       state.batchGenerateProgress = body;
+      // Emit per-item ✓/✗ to the unified log as items reach a terminal state, so
+      // the operator sees WHY the running count drops (success vs failure), not
+      // just that it dropped. Dedup via state._batchGenLogged (reset on batch start).
+      if (!state._batchGenLogged) {
+        // No fresh kick (page reloaded mid-batch) — seed already-terminal items as
+        // "logged" so we don't flood the log with the whole backlog on recovery;
+        // only NEW completions after this point get a line.
+        state._batchGenLogged = new Set();
+        (body.items || []).forEach((it) => {
+          if (it && (it.status === "completed" || it.status === "failed")) {
+            state._batchGenLogged.add(`${it.machine}|${it.mode}`);
+          }
+        });
+      }
+      (body.items || []).forEach((it) => {
+        if (!it || (it.status !== "completed" && it.status !== "failed")) return;
+        const key = `${it.machine}|${it.mode}`;
+        if (state._batchGenLogged.has(key)) return;
+        state._batchGenLogged.add(key);
+        if (it.status === "completed") {
+          pushClientEvent("generate_item_done", {
+            machine: it.machine, mode: it.mode,
+            rtp_pct: it.rtp_point_pct, halfwidth_pp: it.achieved_halfwidth_pp, chunks: it.chunks_processed });
+        } else {
+          pushClientEvent("generate_item_failed", {
+            machine: it.machine, mode: it.mode, error: String(it.error || "").substring(0, 200) });
+        }
+      });
       const meta = byId("batchGenerateProgressMeta");
       const log = byId("batchGenerateProgressLog");
       if (meta) {
@@ -8378,6 +8407,7 @@ function _startBatchGeneratePoll() {
       if (cancelBtn) cancelBtn.classList.toggle("hidden", body.status !== "running" && body.status !== "pending");
 
       if (body.status === "completed" || body.status === "partial" || body.status === "failed" || body.status === "cancelled") {
+        pushClientEvent("batch_generate_done", { completed: body.completed, total: body.total, failed: body.failed });
         clearInterval(state.batchGeneratePollTimer);
         state.batchGeneratePollTimer = null;
         state.batchGenerateId = null;
@@ -9983,18 +10013,29 @@ function _renderActivityStrip() {
   const statusEl = byId("activityStripStatus");
   if (!panel || !body) return;
   const active = state._activeRuns || [];
-  if (active.length) {
+  // Batch-regenerate (重生) progress is item-based, not chunk-based — its own
+  // authoritative meter (完成 X/Y), pinned first so 0%-chunk generate runs don't
+  // masquerade as "stuck".
+  const batchMeter = PURE.formatBatchGenerateMeter(state.batchGenerateProgress);
+  const anyActive = active.length || Boolean(batchMeter);
+  if (anyActive) {
     panel.classList.add("activity-strip-live");
-    if (statusEl) statusEl.innerHTML = `🟡 ${active.length} 运行中`;
+    if (statusEl) {
+      const n = active.length + (batchMeter ? 1 : 0);
+      statusEl.innerHTML = `🟡 ${n} 运行中`;
+    }
   } else {
     panel.classList.remove("activity-strip-live");
     if (statusEl) statusEl.textContent = "idle";
   }
-  // Live progress meters (sticky at the top of the log): one per active run,
-  // a real-time bar + chunk/spins/CI updated every poll (1.2s). This IS the
-  // progress view — the separate 采样/批量生成 progress windows are retired.
-  const meterHtml = active.length
-    ? `<div class="activity-meters">${active.map((r) => _formatRunMeter(r)).join("")}</div>`
+  // Live progress meters (sticky at the top of the log): the batch-regenerate
+  // item meter (if any) + one per active run, real-time bar updated every poll.
+  // This IS the progress view — the separate 采样/批量生成 windows are retired.
+  const meterRows = [];
+  if (batchMeter) meterRows.push(_meterRowHtml(batchMeter));
+  active.forEach((r) => meterRows.push(_formatRunMeter(r)));
+  const meterHtml = meterRows.length
+    ? `<div class="activity-meters">${meterRows.join("")}</div>`
     : "";
   // Apply the active filter (level/op/machine/search), then show the latest 50
   // (the body scrolls), newest on top. The buffer holds up to 200 (ring above);
@@ -10011,9 +10052,9 @@ function _renderActivityStrip() {
   body.innerHTML = meterHtml + rowsHtml;
 }
 
-// One live-progress meter row for an active run (sticky atop the unified log).
-function _formatRunMeter(run) {
-  const m = PURE.formatRunMeter(run);
+// One live-progress meter row from a {op, machine, mode, pct, label} object —
+// shared by active-run meters AND the batch-regenerate item meter.
+function _meterRowHtml(m) {
   const opLabel = PURE.logOpLabel(m.op);
   const mach = m.machine ? (m.mode != null ? `${m.machine}·m${m.mode}` : String(m.machine)) : "";
   const bar = m.pct != null
@@ -10028,6 +10069,7 @@ function _formatRunMeter(run) {
     + `<span class="meter-label">${_escHtml(m.label)}</span>`
     + `</div>`;
 }
+function _formatRunMeter(run) { return _meterRowHtml(PURE.formatRunMeter(run)); }
 
 // Render ONE canonical log row for every entry — client OR backend. Client
 // events (source:"ui") are already canonical (PURE.buildClientEvent); backend
