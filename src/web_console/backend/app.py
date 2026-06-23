@@ -7880,81 +7880,87 @@ def create_app(
 
         completed = store.list_runs_by_status("completed", limit=10000) or []
         total = len(completed)
-        stale_rawdata = 0
-        stale_analyzer = 0
         untagged = 0
-        # Use sets keyed by (machine, mode) to dedupe across multiple runs.
-        fixable_keys: set[tuple[str, int]] = set()
-        needs_rawdata_keys: set[tuple[str, int]] = set()
-        # Per-request memoized effective-version cache (R-7): one instance
-        # for this endpoint invocation. Computes base_hash once; memoizes
-        # per-(machine, mode). Avoids O(rows × 25-file-read) I/O storm.
+        # Per-request memoized effective-version cache (R-7): one instance for this
+        # endpoint invocation. Computes base_hash once; memoizes per-(machine, mode).
         eff_cache = EffectiveVersionCache()
+        # Group completed runs by (machine, mode), collecting the SET of analyzer
+        # eff versions + rawdata md5s seen across the cell's runs. A cell is stale
+        # ONLY if NONE of its reports is fresh — a 重生 ADDS a fresh run but the old
+        # stale run rows persist in the DB, so a per-ROW count would NEVER drop after
+        # a regen (that was the bug: "report 管理 没有任何变化"). Per-CELL "has a fresh
+        # report?" mirrors the catalog chip's has_current_md5_report and DOES drop
+        # once a successful regen lands a current-version run.
+        cells: dict[tuple[str, int], dict[str, set]] = {}
         for row in completed:
             machine = row.get("machine")
             mode = row.get("mode")
             row_cfg = row.get("rawdata_config_md5") or ""
             row_code = row.get("rawdata_code_md5") or ""
-            # Honesty-3: use effective_analyzer_version, not legacy analyzer_version.
-            # effective is the per-(machine, mode) hash that changes only when
-            # that machine's analysis code changed — the M31-isolation fix.
+            # Honesty-3: effective_analyzer_version is the per-(machine, mode) hash
+            # that changes only when that machine's analysis code changed.
             row_eff = row.get("effective_analyzer_version") or ""
             if not row_cfg and not row_code and not row_eff:
                 untagged += 1
                 continue
-            cur_cfg, cur_code = cur_machines.get(machine or "", ("", ""))
-            # Rawdata staleness: row has fingerprint + doesn't match current
+            if machine is None or mode is None:
+                continue
+            cell = cells.setdefault((str(machine), int(mode)), {"effs": set(), "rawmd5": set()})
+            if row_eff:
+                cell["effs"].add(row_eff)
+            if row_cfg or row_code:
+                cell["rawmd5"].add((row_cfg, row_code))
+
+        stale_rawdata = 0
+        stale_analyzer = 0
+        fixable_keys: set[tuple[str, int]] = set()
+        needs_rawdata_keys: set[tuple[str, int]] = set()
+        for (machine, mode), cell in cells.items():
+            cur_cfg, cur_code = cur_machines.get(machine, ("", ""))
+            # Rawdata-stale: cell has rawdata-tagged reports but NONE is on the
+            # current rawdata md5 (and we have a current md5 to compare against).
             rawdata_is_stale = bool(
-                (row_cfg or row_code)
+                cell["rawmd5"]
                 and (cur_cfg or cur_code)
-                and (row_cfg != cur_cfg or row_code != cur_code)
+                and not any(rc == cur_cfg and rk == cur_code for (rc, rk) in cell["rawmd5"])
             )
-            # Analyzer staleness: compare row's effective against the current
-            # per-(machine, mode) effective. UNVERIFIABLE (no manifest) → NOT
-            # stale (can't verify, honest). Empty row_eff → untagged for this
-            # dimension (also not counted stale — it's legacy/pre-honesty-3).
+            # Analyzer-stale: cell has eff-tagged reports but NONE matches the
+            # current effective version. UNVERIFIABLE (no manifest) → NOT stale.
             analyzer_is_stale = False
-            if row_eff and machine and mode is not None:
+            if cell["effs"]:
                 try:
-                    cur_eff = eff_cache.get(str(machine), int(mode))
+                    cur_eff = eff_cache.get(machine, mode)
                 except FileNotFoundError:
-                    # A closure file is missing — broken install. Surface it,
-                    # don't swallow (feedback_no_silent_swallow.md). Not caught
-                    # here so the endpoint 500s and the operator investigates.
+                    # Missing CLOSURE file = broken install — surface, don't swallow
+                    # (feedback_no_silent_swallow.md). Endpoint 500s; operator investigates.
                     raise
                 if cur_eff != EffectiveVersionCache.UNVERIFIABLE and cur_eff:
-                    analyzer_is_stale = row_eff != cur_eff
+                    analyzer_is_stale = cur_eff not in cell["effs"]
             if rawdata_is_stale:
                 stale_rawdata += 1
             if analyzer_is_stale:
                 stale_analyzer += 1
-            # Fixable = analyzer stale AND rawdata fresh (or rawdata
-            # unverifiable → treat as fresh enough). Resampling-only
-            # cases are NOT fixable by the batch regen button.
-            # R-6: if stale AND no usable rawdata → needs_rawdata (not fixable).
-            if analyzer_is_stale and not rawdata_is_stale and machine and mode is not None:
-                m_int = int(mode)
-                # Check whether there is usable rawdata to run the analyzer on.
-                # Reuses check_rawdata_status (already defined in this file).
+            # Fixable = analyzer stale AND rawdata fresh (regen from current cache).
+            # No usable rawdata → needs_rawdata (resample first), not fixable.
+            if analyzer_is_stale and not rawdata_is_stale:
                 try:
                     rs = check_rawdata_status(
-                        str(machine), m_int, rawdata_root=rd_root, machines_config=mc,
+                        machine, mode, rawdata_root=rd_root, machines_config=mc,
                     )
                     has_rawdata = bool(rs.get("usable_chunks", 0) > 0)
                 except Exception as _rdc_exc:  # noqa: BLE001 — rawdata check is best-effort
-                    # If status check fails, conservatively treat as has rawdata
-                    # so the item lands in fixable (operator can retry).
-                    # Log so the operator can investigate the index failure.
+                    # Status check failed — conservatively treat as has rawdata so
+                    # the item lands in fixable (operator can retry). Log for triage.
                     print(
                         f"[stale-count] check_rawdata_status failed for "
-                        f"{machine}|{m_int}: {type(_rdc_exc).__name__}: {_rdc_exc}",
+                        f"{machine}|{mode}: {type(_rdc_exc).__name__}: {_rdc_exc}",
                         file=sys.stderr,
                     )
                     has_rawdata = True
                 if has_rawdata:
-                    fixable_keys.add((str(machine), m_int))
+                    fixable_keys.add((machine, mode))
                 else:
-                    needs_rawdata_keys.add((str(machine), m_int))
+                    needs_rawdata_keys.add((machine, mode))
         fixable_items = [
             {"machine": m, "mode": mode} for (m, mode) in sorted(fixable_keys)
         ]
